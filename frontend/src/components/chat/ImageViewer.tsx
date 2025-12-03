@@ -14,10 +14,26 @@ interface SearchResult {
 interface ImageViewerProps {
   images: SearchResult[];
   query?: string;
+  onImageReview?: (imageUrl: string) => void;
 }
 
-export function ImageViewer({ images, query }: ImageViewerProps) {
+export function ImageViewer({ images, query, onImageReview }: ImageViewerProps) {
   const [selectedImage, setSelectedImage] = useState<SearchResult | null>(null);
+
+  const handleImageClick = (img: SearchResult, e: React.MouseEvent) => {
+    // Ctrl+Shift+Click sends image for LLM review
+    if (e.ctrlKey && e.shiftKey && onImageReview) {
+      e.preventDefault();
+      e.stopPropagation();
+      const imageUrl = img.original_image || img.link || img.thumbnail;
+      if (imageUrl) {
+        onImageReview(imageUrl);
+      }
+      return;
+    }
+    // Normal click opens lightbox
+    setSelectedImage(img);
+  };
 
   if (!images || images.length === 0) return null;
 
@@ -58,7 +74,7 @@ export function ImageViewer({ images, query }: ImageViewerProps) {
                 "image-viewer-card group",
                 isLarge ? "large" : "standard"
               )}
-              onClick={() => setSelectedImage(img)}
+              onClick={(e) => handleImageClick(img, e)}
               layoutId={`image-${idx}`}
             >
               {/* Image with subtle parallax-like scale on hover */}

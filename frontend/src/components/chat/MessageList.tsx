@@ -16,15 +16,17 @@ interface MessageListProps {
   currentContent: string;
   currentSearchResults?: SearchResult[];
   currentSearchQuery?: string;
+  onImageReview?: (imageUrl: string) => void;
 }
 
-export default function MessageList({ 
-  messages, 
-  isStreaming, 
-  currentThinking, 
+export default function MessageList({
+  messages,
+  isStreaming,
+  currentThinking,
   currentContent,
   currentSearchResults,
-  currentSearchQuery
+  currentSearchQuery,
+  onImageReview
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -47,13 +49,13 @@ export default function MessageList({
           msg.role === 'user' ? (
             <UserMessage key={msg.id} message={msg} />
           ) : (
-            <AIMessage key={msg.id} message={msg} />
+            <AIMessage key={msg.id} message={msg} onImageReview={onImageReview} />
           )
         ))}
         
         {isStreaming && (
-          <AIMessage 
-            key="streaming-ai" 
+          <AIMessage
+            key="streaming-ai"
             message={{
               id: 'streaming',
               role: 'assistant',
@@ -64,6 +66,7 @@ export default function MessageList({
               created_at: new Date().toISOString(),
             }}
             isStreaming={true}
+            onImageReview={onImageReview}
           />
         )}
         

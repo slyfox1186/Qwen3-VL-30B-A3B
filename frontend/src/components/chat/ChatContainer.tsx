@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useChat } from '@/hooks/use-chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -9,6 +9,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { toast } from 'sonner';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -68,6 +69,40 @@ export default function ChatContainer() {
     clearSession();
   };
 
+  const handleImageReview = useCallback(async (imageUrl: string) => {
+    if (isStreaming) {
+      toast.error('Please wait for the current response to complete');
+      return;
+    }
+
+    try {
+      toast.info('Fetching image for review...');
+
+      // Use backend proxy to bypass CORS restrictions
+      const proxyUrl = `${API_BASE_URL}/images/proxy`;
+      console.log(`Fetching image from proxy: ${proxyUrl} for url: ${imageUrl}`);
+      
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: imageUrl }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Proxy fetch failed:', response.status, response.statusText, errorData);
+        throw new Error(errorData.error?.message || `Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      sendMessage('Describe this image.', [data.data_url]);
+    } catch (error) {
+      console.error('Error fetching image for review:', error);
+      const message = error instanceof Error ? error.message : 'Failed to fetch image';
+      toast.error(message);
+    }
+  }, [isStreaming, sendMessage]);
+
   return (
     <div className="app-layout">
       <Sidebar 
@@ -111,13 +146,14 @@ export default function ChatContainer() {
         </header>
         
         <main className="chat-content-area">
-          <MessageList 
-            messages={messages} 
+          <MessageList
+            messages={messages}
             isStreaming={isStreaming}
             currentThinking={currentThinking}
             currentContent={currentContent}
             currentSearchResults={currentSearchResults}
             currentSearchQuery={currentSearchQuery}
+            onImageReview={handleImageReview}
           />
           
           {/* Gradient fade at bottom of list before input */}

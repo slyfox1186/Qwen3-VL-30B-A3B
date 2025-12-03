@@ -14,9 +14,10 @@ import { ImageViewer } from './ImageViewer';
 interface AIMessageProps {
   message: Message;
   isStreaming?: boolean;
+  onImageReview?: (imageUrl: string) => void;
 }
 
-export default function AIMessage({ message, isStreaming }: AIMessageProps) {
+export default function AIMessage({ message, isStreaming, onImageReview }: AIMessageProps) {
   const [isThinkingOpen, setIsThinkingOpen] = useState(true);
   
   const hasThinking = !!message.thinking && message.thinking.length > 0;
@@ -136,7 +137,7 @@ export default function AIMessage({ message, isStreaming }: AIMessageProps) {
             
             {/* Image Viewer */}
             {message.search_results && message.search_results.length > 0 && (
-              <ImageViewer images={message.search_results} query={message.search_query} />
+              <ImageViewer images={message.search_results} query={message.search_query} onImageReview={onImageReview} />
             )}
 
             {isStreaming && (
