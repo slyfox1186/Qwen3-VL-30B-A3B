@@ -1,0 +1,39 @@
+.user-message-container {
+  @apply flex gap-4 justify-end w-full;
+}
+
+.user-message-content-wrapper {
+  @apply flex flex-col items-end max-w-[80%] gap-1.5;
+}
+
+.user-images-grid {
+  @apply grid grid-cols-2 gap-2 mb-1 justify-end;
+}
+
+.user-image-wrapper {
+  @apply relative w-28 h-28 rounded-xl overflow-hidden border border-border/50 shadow-sm;
+}
+
+.user-image {
+  @apply object-cover hover:scale-110 transition-transform duration-500;
+}
+
+.user-text-bubble {
+  @apply bg-primary text-primary-foreground px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-md shadow-primary/5;
+}
+
+.user-text {
+  @apply whitespace-pre-wrap break-words text-[0.9375rem] leading-relaxed;
+}
+
+.user-timestamp {
+  @apply text-[10px] text-muted-foreground/60 font-medium pr-1 opacity-0 transition-opacity;
+}
+
+.user-avatar {
+  @apply h-9 w-9 mt-auto mb-6 bg-muted border border-border shadow-sm shrink-0;
+}
+
+.user-avatar-fallback {
+  @apply bg-gradient-to-b from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900;
+}

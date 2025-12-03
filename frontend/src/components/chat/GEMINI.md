@@ -1,0 +1,16 @@
+# Last Updated: 2025-12-03
+
+## Purpose
+Chat interface components for message display, input, streaming, and session management.
+
+## Key Files
+- `ChatContainer.tsx` - Main container with session init, sidebar toggle, header, message list, input area
+- `MessageList.tsx` - Renders message history + current streaming message with thinking/content
+- `ChatInput.tsx` - Textarea with image upload, send/stop buttons, keyboard shortcuts
+- `AIMessage.tsx` - Assistant message with thinking collapsible, markdown content, search results
+- `UserMessage.tsx` - User message with text + optional attached images
+- `Sidebar.tsx` - Session list, new chat button, settings
+- `ImageViewer.tsx` - Image modal/lightbox for viewing search results
+
+## Dependencies/Relations
+Used by `app/page.tsx`. Depends on `hooks/use-chat`, `stores/chat-store`, `stores/session-store`, `ui/` components.

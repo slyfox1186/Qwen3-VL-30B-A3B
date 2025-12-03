@@ -1,0 +1,51 @@
+.scroll-area {
+  @apply h-full w-full p-4;
+}
+
+.message-list-wrapper {
+  @apply flex flex-col gap-8 pb-12 max-w-3xl mx-auto pt-4;
+}
+
+.empty-state-container {
+  @apply flex flex-col items-center justify-center h-[60vh] text-center text-muted-foreground;
+}
+
+.empty-state-icon-wrapper {
+  @apply relative mb-6;
+}
+
+.empty-state-glow {
+  @apply absolute inset-0 bg-primary/20 blur-xl rounded-full;
+}
+
+.empty-state-icon-box {
+  @apply relative bg-background border border-border p-5 rounded-2xl shadow-lg;
+}
+
+.empty-state-main-icon {
+  @apply w-12 h-12 text-primary;
+}
+
+.empty-state-sparkle-wrapper {
+  @apply absolute -top-2 -right-2 bg-background rounded-full p-1 shadow-sm border border-border;
+}
+
+.empty-state-sparkle {
+  @apply w-4 h-4 text-amber-500;
+}
+
+.empty-state-title {
+  @apply text-2xl font-semibold mb-3 text-foreground tracking-tight;
+}
+
+.empty-state-description {
+  @apply max-w-[400px] text-base leading-relaxed text-muted-foreground/80;
+}
+
+.suggestions-grid {
+  @apply grid grid-cols-2 gap-3 mt-8 w-full max-w-[500px];
+}
+
+.suggestion-card {
+  @apply p-3 rounded-xl border border-border/50 bg-muted/30 text-xs font-medium hover:bg-muted/80 hover:border-primary/30 transition-all cursor-pointer select-none;
+}

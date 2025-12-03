@@ -1,0 +1,307 @@
+"""Chat endpoints with SSE streaming."""
+
+import json
+import logging
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+
+from app.config import get_settings
+from app.dependencies import (
+    get_history_service,
+    get_llm_client,
+    get_session_manager,
+    validate_session,
+)
+from app.models.domain.message import Message
+from app.models.schemas.chat import ChatRequest, ChatResponse
+from app.services.image.converter import ImageConverter
+from app.services.image.processor import ImageValidationError
+from app.services.llm.client import VLLMClient
+from app.services.llm.message_builder import MessageBuilder
+from app.services.llm.streaming import SSEStreamHandler, StreamResult, parse_thinking_from_text
+from app.services.session.history import ChatHistoryService
+from app.services.session.manager import SessionManager
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/chat")
+
+
+# Tool definition for image search (OpenAI-compatible format)
+IMAGE_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_images",
+        "description": "Search for images on the internet. Use when user asks for images, pictures, photos, or visual examples.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query for images"
+                }
+            },
+            "required": ["query"]
+        }
+    }
+}
+
+TOOLS = [IMAGE_SEARCH_TOOL]
+
+
+def build_current_user_message(content: str, image_urls: list[str]) -> dict:
+    """Build the current user message with optional image for vLLM."""
+    if not image_urls:
+        return {"role": "user", "content": content}
+
+    # Multimodal format: image first, then text
+    message_content = []
+    for url in image_urls:
+        message_content.append({
+            "type": "image_url",
+            "image_url": {"url": url},
+        })
+    message_content.append({"type": "text", "text": content})
+
+    return {"role": "user", "content": message_content}
+
+
+@router.post("")
+async def chat_stream(
+    request: ChatRequest,
+    session_id: Annotated[str, Depends(validate_session)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    llm_client: Annotated[VLLMClient, Depends(get_llm_client)],
+):
+    """
+    Send a message and receive streaming response via SSE.
+
+    The response is a text/event-stream with the following events:
+    - start: Stream initialized
+    - thinking_start: Model started reasoning
+    - thinking_delta: Reasoning content chunk
+    - thinking_end: Reasoning complete
+    - content_start: Main response started
+    - content_delta: Response content chunk
+    - content_end: Response complete
+    - done: Stream finished
+    - error: Error occurred
+    """
+    settings = get_settings()
+    request_id = str(uuid.uuid4())
+    converter = ImageConverter()
+
+    # Process images if provided (for LLM request only, not stored)
+    image_urls = []
+    has_image = False
+
+    if request.images:
+        for i, img in enumerate(request.images):
+            try:
+                data_url = converter.to_data_url(img.data, img.media_type)
+                image_urls.append(data_url)
+                has_image = True
+            except ImageValidationError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": e.message,
+                            "details": {"field": f"images[{i}]", "reason": e.message},
+                        }
+                    },
+                )
+
+    # Save user message to history (text only, note if image was attached)
+    user_content = request.message
+    if has_image:
+        user_content = f"[Image attached]\n{request.message}"
+
+    user_message = Message(
+        role="user",
+        content=user_content,
+        session_id=session_id,
+    )
+    await history_service.append_message(
+        session_id,
+        user_message,
+        settings.session_ttl_seconds,
+    )
+
+    # Get conversation history (text only)
+    history = await history_service.get_context_messages(session_id)
+
+    # Build LLM messages: history (text) + current message (with image if present)
+    llm_messages = MessageBuilder.build_messages(history[:-1])  # Exclude current msg
+    llm_messages.append(build_current_user_message(request.message, image_urls))
+
+    # Holder to capture streaming result for persistence
+    result_holder: list[StreamResult] = []
+
+    async def generate():
+        """Generate SSE events from LLM stream."""
+        try:
+            # Get token stream from LLM with tool support
+            token_generator = llm_client.chat_completion_stream(
+                messages=llm_messages,
+                max_tokens=request.max_tokens or settings.vllm_max_tokens,
+                temperature=request.temperature or 0.7,
+                tools=TOOLS,
+                tool_choice="auto",
+            )
+
+            # Stream with thinking tag parsing, capturing result
+            async for sse_chunk in SSEStreamHandler.stream_response(
+                token_generator, request_id, result_holder
+            ):
+                yield sse_chunk
+
+            # After streaming completes, save assistant message to history
+            if result_holder:
+                stream_result = result_holder[0]
+                assistant_message = Message(
+                    role="assistant",
+                    content=stream_result.content,
+                    thinking=stream_result.thinking or None,
+                    search_results=stream_result.search_results,
+                    search_query=stream_result.search_query,
+                    session_id=session_id,
+                )
+                await history_service.append_message(
+                    session_id,
+                    assistant_message,
+                    settings.session_ttl_seconds,
+                )
+                # Update session message count (user + assistant = 2)
+                await session_manager.increment_message_count(session_id, 2)
+
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e), 'code': 'LLM_ERROR'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Request-ID": request_id,
+        },
+    )
+
+
+@router.post("/sync", response_model=ChatResponse)
+async def chat_sync(
+    request: ChatRequest,
+    session_id: Annotated[str, Depends(validate_session)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    llm_client: Annotated[VLLMClient, Depends(get_llm_client)],
+):
+    """
+    Send a message and receive complete response (non-streaming).
+
+    Alternative to SSE streaming for simpler clients.
+    """
+    settings = get_settings()
+    request_id = str(uuid.uuid4())
+    converter = ImageConverter()
+
+    # Process images if provided (for LLM request only, not stored)
+    image_urls = []
+    has_image = False
+
+    if request.images:
+        for i, img in enumerate(request.images):
+            try:
+                data_url = converter.to_data_url(img.data, img.media_type)
+                image_urls.append(data_url)
+                has_image = True
+            except ImageValidationError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": e.message,
+                            "details": {"field": f"images[{i}]", "reason": e.message},
+                        }
+                    },
+                )
+
+    # Save user message to history (text only, note if image was attached)
+    user_content = request.message
+    if has_image:
+        user_content = f"[Image attached]\n{request.message}"
+
+    user_message = Message(
+        role="user",
+        content=user_content,
+        session_id=session_id,
+    )
+    await history_service.append_message(
+        session_id,
+        user_message,
+        settings.session_ttl_seconds,
+    )
+
+    # Get conversation history (text only)
+    history = await history_service.get_context_messages(session_id)
+
+    # Build LLM messages: history (text) + current message (with image if present)
+    llm_messages = MessageBuilder.build_messages(history[:-1])
+    llm_messages.append(build_current_user_message(request.message, image_urls))
+
+    try:
+        # Get complete response
+        result = await llm_client.chat_completion(
+            messages=llm_messages,
+            max_tokens=request.max_tokens or settings.vllm_max_tokens,
+            temperature=request.temperature or 0.7,
+        )
+
+        # Parse thinking from response
+        thinking, content = parse_thinking_from_text(result["content"])
+
+        # Create and save assistant message
+        assistant_message = Message(
+            role="assistant",
+            content=content,
+            thinking=thinking,
+            session_id=session_id,
+        )
+        await history_service.append_message(
+            session_id,
+            assistant_message,
+            settings.session_ttl_seconds,
+        )
+
+        # Update session message count
+        await session_manager.increment_message_count(session_id, 2)
+
+        return ChatResponse(
+            request_id=request_id,
+            session_id=session_id,
+            content=content,
+            thinking=thinking,
+            usage={
+                "prompt_tokens": result["usage"]["prompt_tokens"],
+                "completion_tokens": result["usage"]["completion_tokens"],
+            } if result.get("usage") else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Chat completion error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": {
+                    "code": "LLM_ERROR",
+                    "message": f"Failed to get response from LLM: {str(e)}",
+                }
+            },
+        )

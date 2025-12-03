@@ -1,0 +1,72 @@
+.chat-input-container {
+  @apply px-4 pb-6 pt-2 bg-gradient-to-t from-background via-background to-transparent z-20;
+}
+
+.chat-input-wrapper {
+  @apply max-w-3xl mx-auto relative rounded-2xl border bg-background shadow-lg transition-colors overflow-hidden;
+}
+
+.chat-input-wrapper.dragging {
+  @apply border-primary ring-2 ring-primary/20 bg-muted/50;
+}
+
+.chat-input-wrapper.default {
+  @apply border-border;
+}
+
+.drag-overlay {
+  @apply absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm;
+}
+
+.drag-overlay-content {
+  @apply text-center text-primary font-medium flex flex-col items-center gap-2;
+}
+
+.image-preview-container {
+  @apply px-4 pt-4 flex gap-3 overflow-x-auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.image-preview-item {
+  @apply relative shrink-0;
+}
+
+.image-preview-box {
+  @apply w-16 h-16 rounded-lg overflow-hidden border border-border bg-muted relative shadow-sm;
+}
+
+.image-preview-remove {
+  @apply absolute -top-1.5 -right-1.5 bg-destructive text-white rounded-full p-0.5 shadow-md opacity-0 transition-all hover:scale-110;
+}
+
+.chat-input-controls {
+  @apply flex items-end gap-2 p-2;
+}
+
+.attach-button {
+  @apply shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl h-10 w-10;
+}
+
+.chat-textarea {
+  @apply min-h-[40px] max-h-[200px] w-full resize-none bg-transparent border-0 p-2.5 focus-visible:ring-0 shadow-none text-base;
+}
+
+.stop-button {
+  @apply shrink-0 rounded-xl h-10 w-10 shadow-sm;
+}
+
+.send-button {
+  @apply shrink-0 rounded-xl h-10 w-10 transition-all shadow-sm;
+}
+
+.chat-footer-text {
+  @apply text-center mt-3;
+}
+
+.chat-footer-caption {
+  @apply text-[10px] text-muted-foreground/50 uppercase tracking-widest font-medium;
+}

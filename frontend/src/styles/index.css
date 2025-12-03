@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@import "./globals.css";
+@import "./components/chat-container.css";
+@import "./components/image-viewer.css";
+@import "./components/chat-input.css";
+@import "./components/user-message.css";
+@import "./components/sidebar.css";
+@import "./components/ai-message.css";
+@import "./components/message-list.css";

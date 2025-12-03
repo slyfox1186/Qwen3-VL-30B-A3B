@@ -1,0 +1,68 @@
+"""Pydantic schemas for chat API."""
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class ImageInput(BaseModel):
+    """Base64 encoded image input."""
+
+    data: str = Field(..., description="Base64 encoded image data")
+    media_type: str | None = Field(
+        None,
+        description="MIME type (auto-detected if not provided)",
+    )
+
+
+class ChatRequest(BaseModel):
+    """Chat message request."""
+
+    message: str = Field(..., min_length=1, max_length=32000)
+    images: list[ImageInput] | None = Field(
+        None,
+        max_length=1,
+        description="Optional image (max 1 per request)",
+    )
+    max_tokens: int | None = Field(2048, ge=1, le=4096)
+    temperature: float | None = Field(0.7, ge=0.0, le=2.0)
+
+    @field_validator("images")
+    @classmethod
+    def validate_images_count(cls, v):
+        if v and len(v) > 1:
+            raise ValueError("Maximum 1 image allowed per message")
+        return v
+
+
+class TokenUsage(BaseModel):
+    """Token usage information."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    thinking_tokens: int | None = None
+
+
+class ChatResponse(BaseModel):
+    """Non-streaming chat response."""
+
+    request_id: str
+    session_id: str
+    content: str
+    thinking: str | None = None
+    usage: TokenUsage | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StreamEvent(BaseModel):
+    """SSE stream event data."""
+
+    type: str = Field(
+        ...,
+        description="Event type: start, thinking_start, thinking_delta, thinking_end, content_start, content_delta, content_end, done, error",
+    )
+    content: str | None = None
+    request_id: str | None = None
+    usage: TokenUsage | None = None
+    error: str | None = None
+    code: str | None = None

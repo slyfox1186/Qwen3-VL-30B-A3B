@@ -1,0 +1,71 @@
+.image-viewer-container {
+  @apply w-full my-6 space-y-4;
+}
+
+.image-viewer-header {
+  @apply flex items-center justify-between px-1;
+}
+
+.image-viewer-header-text {
+  @apply flex items-center gap-2 text-xs font-medium text-muted-foreground/80 uppercase tracking-wider;
+}
+
+.image-viewer-badge {
+  @apply text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-border/50;
+}
+
+.image-viewer-grid {
+  @apply grid grid-cols-2 md:grid-cols-3 gap-3 auto-rows-[180px];
+}
+
+.image-viewer-card {
+  @apply relative overflow-hidden rounded-xl border border-white/10 bg-muted shadow-sm cursor-zoom-in;
+}
+
+.image-viewer-card.large {
+  @apply col-span-2 row-span-2 h-full;
+}
+
+.image-viewer-card.standard {
+  @apply col-span-1 row-span-1;
+}
+
+.image-viewer-image {
+  @apply h-full w-full object-cover transition-transform duration-700 ease-out;
+}
+
+.image-viewer-overlay {
+  @apply absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 transition-opacity duration-300;
+}
+
+.image-viewer-info {
+  @apply absolute bottom-0 left-0 right-0 p-4 translate-y-4 transition-transform duration-300 opacity-0;
+}
+
+.image-viewer-zoom-icon {
+  @apply absolute top-3 right-3 bg-black/40 backdrop-blur-md text-white p-1.5 rounded-full opacity-0 -translate-y-2 transition-all duration-300;
+}
+
+.lightbox-overlay {
+  @apply fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 sm:p-8;
+}
+
+.lightbox-controls {
+  @apply absolute top-4 right-4 flex items-center gap-3 z-50;
+}
+
+.lightbox-content {
+  @apply relative max-w-5xl w-full max-h-full flex flex-col items-center justify-center;
+}
+
+.lightbox-image-wrapper {
+  @apply relative rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/10 bg-black;
+}
+
+.lightbox-image {
+  @apply max-h-[80vh] w-auto object-contain;
+}
+
+.lightbox-caption {
+  @apply mt-6 text-center max-w-2xl;
+}

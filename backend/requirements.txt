@@ -1,0 +1,33 @@
+# VLM Chat API Dependencies
+
+# Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Data Validation
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+
+# Redis
+redis>=5.0.0
+
+# OpenAI Client (for vLLM)
+openai>=1.10.0
+
+# SSE Streaming
+sse-starlette>=2.0.0
+
+# Image Processing
+pillow>=10.2.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Multipart Forms
+python-multipart>=0.0.6
+
+# HTTP Client
+httpx>=0.26.0
+
+# SerpApi
+serpapi>=0.1.5

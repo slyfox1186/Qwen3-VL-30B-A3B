@@ -1,0 +1,71 @@
+.ai-message-container {
+  @apply flex gap-4 justify-start w-full;
+}
+
+.ai-avatar {
+  @apply h-9 w-9 mt-0.5 bg-gradient-to-br from-indigo-500 to-purple-600 border-0 shadow-sm shrink-0;
+}
+
+.ai-avatar-fallback {
+  @apply bg-transparent text-white;
+}
+
+.ai-content-wrapper {
+  @apply flex flex-col items-start max-w-[85%] min-w-0 gap-2;
+}
+
+.thinking-block {
+  @apply w-full rounded-xl border border-border/50 bg-muted/30 overflow-hidden;
+}
+
+.thinking-header {
+  @apply w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground/80 hover:text-primary hover:bg-muted/50 transition-colors;
+}
+
+.thinking-content-wrapper {
+  @apply overflow-hidden;
+}
+
+.thinking-text {
+  @apply px-4 pb-3 pt-0 text-sm text-muted-foreground font-mono border-t border-border/30 bg-black/[0.02] dark:bg-white/[0.02] leading-relaxed whitespace-pre-wrap;
+}
+
+.thinking-cursor {
+  @apply inline-block w-1.5 h-3 ml-1 align-middle bg-primary/50;
+}
+
+.ai-prose-container {
+  @apply prose prose-zinc dark:prose-invert prose-sm max-w-none w-full bg-background/50 border border-border/40 px-6 py-5 rounded-2xl shadow-sm break-words leading-7;
+}
+
+.code-block-wrapper {
+  @apply relative my-4 rounded-lg overflow-hidden border border-border/50 shadow-sm;
+}
+
+.code-language-badge {
+  @apply absolute top-0 right-0 px-2 py-1 text-[10px] text-muted-foreground bg-muted/50 rounded-bl-lg font-mono;
+}
+
+.inline-code {
+  @apply bg-muted/60 px-1.5 py-0.5 rounded-[4px] text-[0.85em] font-mono text-primary/90 font-medium;
+}
+
+.ai-cursor {
+  @apply inline-block w-2 h-4 ml-1 align-sub bg-primary rounded-[1px];
+}
+
+.loading-dots-container {
+  @apply flex items-center gap-1 h-8 px-2;
+}
+
+.loading-dot {
+  @apply w-1.5 h-1.5 bg-muted-foreground/40 rounded-full;
+}
+
+.ai-timestamp-wrapper {
+  @apply px-1 flex items-center justify-between w-full;
+}
+
+.ai-timestamp {
+  @apply text-[10px] text-muted-foreground/60 font-medium uppercase tracking-wider;
+}

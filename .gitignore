@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pyo
+.pyd
+
+# Build outputs
+dist/
+.next/
+*.egg-info/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.*.local
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cache
+.cache/
+*.md5
+*.map
+
+# Redis data
+backend/data/redis/
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# TypeScript
+tsconfig.tsbuildinfo
+
+# User files
+user-files/
