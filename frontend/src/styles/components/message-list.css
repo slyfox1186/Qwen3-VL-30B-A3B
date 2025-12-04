@@ -3,7 +3,7 @@
 }
 
 .message-list-wrapper {
-  @apply flex flex-col gap-8 pb-12 max-w-3xl mx-auto pt-4;
+  @apply flex flex-col gap-8 pb-12 max-w-5xl mx-auto pt-4;
 }
 
 .empty-state-container {

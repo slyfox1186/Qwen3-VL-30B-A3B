@@ -114,10 +114,12 @@ async def chat_stream(
                     },
                 )
 
-    # Save user message to history (text only, note if image was attached)
+    # Save user message to history (text only, note if images were attached)
     user_content = request.message
     if has_image:
-        user_content = f"[Image attached]\n{request.message}"
+        image_count = len(image_urls)
+        image_label = "Image" if image_count == 1 else f"{image_count} images"
+        user_content = f"[{image_label} attached]\n{request.message}"
 
     user_message = Message(
         role="user",
@@ -232,10 +234,12 @@ async def chat_sync(
                     },
                 )
 
-    # Save user message to history (text only, note if image was attached)
+    # Save user message to history (text only, note if images were attached)
     user_content = request.message
     if has_image:
-        user_content = f"[Image attached]\n{request.message}"
+        image_count = len(image_urls)
+        image_label = "Image" if image_count == 1 else f"{image_count} images"
+        user_content = f"[{image_label} attached]\n{request.message}"
 
     user_message = Message(
         role="user",

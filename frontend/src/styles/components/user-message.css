@@ -19,7 +19,7 @@
 }
 
 .user-text-bubble {
-  @apply bg-primary text-primary-foreground px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-md shadow-primary/5;
+  @apply bg-secondary text-secondary-foreground dark:bg-zinc-800 dark:text-white px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm border border-border/50;
 }
 
 .user-text {
@@ -40,11 +40,11 @@
 
 /* Message Actions (Copy & Edit buttons) */
 .user-message-actions {
-  @apply absolute bottom-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-primary/80 rounded-lg backdrop-blur-sm pl-1;
+  @apply absolute right-full top-1/2 -translate-y-1/2 mr-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200;
 }
 
 .user-edit-button {
-  @apply h-6 w-6 text-primary-foreground/60 hover:text-primary-foreground hover:bg-primary-foreground/10;
+  @apply h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted;
 }
 
 /* Edit Mode Container */

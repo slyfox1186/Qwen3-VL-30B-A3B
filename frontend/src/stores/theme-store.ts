@@ -3,12 +3,15 @@ import { persist } from 'zustand/middleware';
 
 export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
+export type ThemeColor = 'zinc' | 'slate' | 'stone' | 'gray' | 'neutral' | 'red' | 'rose' | 'orange' | 'green' | 'blue' | 'yellow' | 'violet';
 
 interface ThemeState {
   theme: Theme;
   resolvedTheme: ResolvedTheme;
+  colorTheme: ThemeColor;
   hasHydrated: boolean;
   setTheme: (theme: Theme) => void;
+  setColorTheme: (color: ThemeColor) => void;
   setResolvedTheme: (resolved: ResolvedTheme) => void;
   setHasHydrated: (state: boolean) => void;
 }
@@ -23,11 +26,16 @@ export const useThemeStore = create<ThemeState>()(
     (set, get) => ({
       theme: 'system',
       resolvedTheme: 'dark',
+      colorTheme: 'zinc',
       hasHydrated: false,
 
       setTheme: (theme) => {
         const resolved = theme === 'system' ? getSystemTheme() : theme;
         set({ theme, resolvedTheme: resolved });
+      },
+
+      setColorTheme: (colorTheme) => {
+        set({ colorTheme });
       },
 
       setResolvedTheme: (resolved) => set({ resolvedTheme: resolved }),

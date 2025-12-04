@@ -1,5 +1,6 @@
 'use client';
 
+import { Toaster } from 'sonner';
 import { useEffect, useLayoutEffect } from 'react';
 import { useThemeStore } from '@/stores/theme-store';
 
@@ -10,26 +11,36 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const { theme, resolvedTheme, setResolvedTheme, hasHydrated } = useThemeStore();
+  const { theme, resolvedTheme, colorTheme, setResolvedTheme, hasHydrated } = useThemeStore();
 
   // Apply theme class to document
   useIsomorphicLayoutEffect(() => {
     const root = document.documentElement;
-
     root.classList.add('theme-transition');
 
+    // Handle Dark Mode
     if (resolvedTheme === 'dark') {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
 
+    // Handle Color Theme
+    // Remove all existing theme color classes
+    root.classList.forEach((cls) => {
+      if (cls.startsWith('theme-') && cls !== 'theme-transition') {
+        root.classList.remove(cls);
+      }
+    });
+    // Add new color theme
+    root.classList.add(`theme-${colorTheme}`);
+
     const timeout = setTimeout(() => {
       root.classList.remove('theme-transition');
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [resolvedTheme]);
+  }, [resolvedTheme, colorTheme]);
 
   // Listen for system preference changes
   useEffect(() => {
@@ -57,5 +68,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, [theme, hasHydrated, setResolvedTheme]);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Toaster position="top-center" theme={resolvedTheme as 'light' | 'dark' | 'system'} />
+    </>
+  );
 }

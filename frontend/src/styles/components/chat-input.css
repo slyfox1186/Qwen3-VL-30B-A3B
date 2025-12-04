@@ -3,7 +3,7 @@
 }
 
 .chat-input-wrapper {
-  @apply max-w-3xl mx-auto relative rounded-2xl border bg-background shadow-lg transition-colors overflow-hidden;
+  @apply max-w-5xl mx-auto relative rounded-2xl border bg-background shadow-lg transition-colors overflow-hidden;
 }
 
 .chat-input-wrapper.dragging {

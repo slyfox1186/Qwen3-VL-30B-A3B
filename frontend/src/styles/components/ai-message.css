@@ -15,7 +15,7 @@
 }
 
 .ai-prose-container {
-  @apply prose prose-zinc dark:prose-invert prose-sm max-w-none w-full bg-background/50 border border-border/40 px-6 py-5 rounded-2xl shadow-sm break-words leading-7;
+  @apply prose dark:prose-invert prose-sm max-w-none w-full bg-card border border-border/50 px-6 py-5 rounded-2xl shadow-sm break-words leading-7 text-foreground;
 }
 
 .code-block-wrapper {

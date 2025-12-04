@@ -53,23 +53,36 @@ export default function ChatContainer() {
       ? 'offline' 
       : 'online';
 
+  // Track which session ID we've loaded history for to avoid re-loading
+  // when session metadata changes (like title updates)
+  const loadedSessionRef = React.useRef<string | null>(null);
+
   // Initialize session on mount if none exists (after hydration)
-  // If session exists, load its history
+  // If session exists, load its history (only once per session ID)
   useEffect(() => {
     if (!hasHydrated) return;
 
     const initSession = async () => {
       if (session) {
+        // Only load history if we haven't already loaded for this session ID
+        if (loadedSessionRef.current === session.id) {
+          return;
+        }
+
         // Session exists, load its history
         const loaded = await loadHistory(session.id);
-        if (!loaded) {
+        if (loaded) {
+          loadedSessionRef.current = session.id;
+        } else {
           // Session expired on backend, create new one
+          loadedSessionRef.current = null;
           clearSession();
         }
         return;
       }
 
       // No session, create one
+      loadedSessionRef.current = null;
       await createSession();
     };
 
@@ -102,11 +115,13 @@ export default function ChatContainer() {
 
       if (remainingSessions.length === 0) {
         // No other conversations - create a new one
+        loadedSessionRef.current = null;
         clearSession();
         toast.success('Conversation deleted. Creating new chat...');
       } else {
         // Switch to the most recently used session (first in list)
         const nextSession = remainingSessions[0];
+        loadedSessionRef.current = nextSession.id;
         setSession(nextSession);
         await loadHistory(nextSession.id);
         toast.success('Conversation deleted. Switched to previous chat.');
@@ -136,6 +151,7 @@ export default function ChatContainer() {
   }, [handleDeleteConversation, toggleSidebar]);
 
   const handleNewChat = () => {
+    loadedSessionRef.current = null;
     clearMessages();
     clearSession();
   };

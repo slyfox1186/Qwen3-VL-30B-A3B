@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme";
 import "@/styles/index.css";
 
@@ -55,7 +54,6 @@ export default function RootLayout({
       >
         <ThemeProvider>
           {children}
-          <Toaster position="top-center" />
         </ThemeProvider>
       </body>
     </html>
