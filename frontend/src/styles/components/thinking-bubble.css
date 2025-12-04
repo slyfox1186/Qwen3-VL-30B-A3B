@@ -1,0 +1,36 @@
+/* ThinkingBubble component styles */
+
+.thinking-bubble-container {
+  @apply mb-6 w-full;
+}
+
+.thinking-toggle-button {
+  @apply flex items-center justify-between gap-2 text-sm text-muted-foreground
+         hover:text-foreground transition-all w-full text-left px-4 py-3
+         rounded-lg border border-border/40 bg-muted/20 hover:bg-muted/40;
+}
+
+.thinking-toggle-left {
+  @apply flex items-center gap-2.5;
+}
+
+.thinking-icon {
+  @apply h-4 w-4 text-indigo-400;
+}
+
+.thinking-label {
+  @apply font-medium;
+}
+
+.thinking-chevron {
+  @apply h-4 w-4 opacity-70;
+}
+
+.thinking-content-wrapper {
+  @apply overflow-hidden;
+}
+
+.thinking-content {
+  @apply mt-2 px-4 py-3 text-sm text-muted-foreground
+         border border-border/30 bg-muted/10 rounded-lg shadow-inner;
+}

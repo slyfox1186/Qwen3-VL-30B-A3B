@@ -21,6 +21,7 @@ export default function ChatContainer() {
     messages,
     isStreaming,
     currentContent,
+    currentThought,
     currentSearchResults,
     currentSearchQuery,
     sendMessage,
@@ -134,13 +135,14 @@ export default function ChatContainer() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === 'x') {
+      // Alt+X: Toggle Sidebar
+      if (e.altKey && (e.code === 'KeyX' || e.key.toLowerCase() === 'x')) {
         e.preventDefault();
         toggleSidebar();
       }
 
       // Ctrl+Alt+Shift+D: Delete current conversation
-      if (e.ctrlKey && e.altKey && e.shiftKey && e.key === 'D') {
+      if (e.ctrlKey && e.altKey && e.shiftKey && (e.code === 'KeyD' || e.key.toLowerCase() === 'd')) {
         e.preventDefault();
         handleDeleteConversation();
       }
@@ -186,7 +188,7 @@ export default function ChatContainer() {
 
       // sendMessage has its own atomic ref-based guard against concurrent calls
       // If a request is already in progress, sendMessage will safely reject
-      sendMessage('Describe this image.', [data.data_url]);
+      sendMessage('Describe this image in GREAT DETAIL.', [data.data_url]);
     } catch (error) {
       console.error('Error fetching image for review:', error);
       const message = error instanceof Error ? error.message : 'Failed to fetch image';
@@ -250,6 +252,7 @@ export default function ChatContainer() {
             messages={messages}
             isStreaming={isStreaming}
             currentContent={currentContent}
+            currentThought={currentThought}
             currentSearchResults={currentSearchResults}
             currentSearchQuery={currentSearchQuery}
             onImageReview={handleImageReview}

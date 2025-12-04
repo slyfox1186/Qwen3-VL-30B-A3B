@@ -7,6 +7,7 @@
 @import "./components/user-message.css";
 @import "./components/sidebar.css";
 @import "./components/ai-message.css";
+@import "./components/thinking-bubble.css";
 @import "./components/message-list.css";
 @import "./components/copy-button.css";
 @import "./components/qwen-logo.css";

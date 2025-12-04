@@ -1,9 +1,10 @@
 """Image proxy endpoint to bypass CORS restrictions."""
 
+import asyncio
 import base64
 import logging
+from urllib.parse import urlparse
 
-import httpx
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -32,6 +33,38 @@ class ImageProxyResponse(BaseModel):
     height: int = Field(..., description="Image height in pixels")
 
 
+async def fetch_image_with_curl(url: str, referer: str, timeout: float) -> bytes:
+    """Fetch image using curl subprocess for better compatibility."""
+    cmd = [
+        "curl",
+        "-sS",  # Silent but show errors
+        "-L",  # Follow redirects
+        "--max-time", str(int(timeout)),
+        "--max-filesize", str(MAX_IMAGE_SIZE),
+        "-H", "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
+        "-H", "Accept: image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+        "-H", f"Referer: {referer}",
+        url,
+    ]
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, stderr = await asyncio.wait_for(
+        proc.communicate(),
+        timeout=timeout + 5,  # Extra buffer for process overhead
+    )
+
+    if proc.returncode != 0:
+        error_msg = stderr.decode().strip() if stderr else f"curl exit code {proc.returncode}"
+        raise RuntimeError(error_msg)
+
+    return stdout
+
+
 @router.post("/proxy", response_model=ImageProxyResponse)
 async def proxy_image(request: ImageProxyRequest):
     """
@@ -41,70 +74,57 @@ async def proxy_image(request: ImageProxyRequest):
     """
     url = str(request.url)
 
+    # Extract origin from URL for Referer header (prevents hotlink blocking)
+    parsed = urlparse(url)
+    referer = f"{parsed.scheme}://{parsed.netloc}/"
+    logger.info(f"Proxying image from {url} with referer {referer}")
+
     try:
-        async with httpx.AsyncClient(
-            timeout=FETCH_TIMEOUT,
-            follow_redirects=True,
-            headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
-                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Sec-Fetch-Dest": "image",
-                "Sec-Fetch-Mode": "no-cors",
-                "Sec-Fetch-Site": "cross-site",
-            },
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        image_bytes = await fetch_image_with_curl(url, referer, FETCH_TIMEOUT)
 
-            # Check content length
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > MAX_IMAGE_SIZE:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"error": {"code": "IMAGE_TOO_LARGE", "message": "Image exceeds 10MB"}},
-                )
+        if len(image_bytes) > MAX_IMAGE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": {"code": "IMAGE_TOO_LARGE", "message": "Image exceeds 10MB"}},
+            )
 
-            image_bytes = response.content
+        if len(image_bytes) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"error": {"code": "EMPTY_RESPONSE", "message": "Empty response from server"}},
+            )
 
-            if len(image_bytes) > MAX_IMAGE_SIZE:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"error": {"code": "IMAGE_TOO_LARGE", "message": "Image exceeds 10MB"}},
-                )
-
-    except httpx.TimeoutException:
+    except TimeoutError:
         logger.warning(f"Timeout fetching image: {url}")
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={"error": {"code": "FETCH_TIMEOUT", "message": "Image fetch timed out"}},
         )
-    except httpx.HTTPStatusError as e:
-        upstream_status = e.response.status_code
-        logger.warning(f"HTTP error fetching image {url}: {upstream_status}")
-        # Map upstream status to appropriate proxy response
-        if 400 <= upstream_status < 500:
-            # Client errors (403 Forbidden, 404 Not Found, etc.) - return 403 to indicate access denied
-            proxy_status = status.HTTP_403_FORBIDDEN
+    except RuntimeError as e:
+        error_str = str(e).lower()
+        logger.warning(f"Curl error fetching image {url}: {e}")
+
+        # Parse curl error messages
+        if "403" in error_str or "forbidden" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": {"code": "FETCH_FAILED", "message": "Access denied (HTTP 403)"}},
+            )
+        elif "404" in error_str or "not found" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": {"code": "NOT_FOUND", "message": "Image not found (HTTP 404)"}},
+            )
+        elif "timeout" in error_str or "timed out" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail={"error": {"code": "FETCH_TIMEOUT", "message": "Image fetch timed out"}},
+            )
         else:
-            # Server errors - return 502 Bad Gateway
-            proxy_status = status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(
-            status_code=proxy_status,
-            detail={
-                "error": {
-                    "code": "FETCH_FAILED",
-                    "message": f"Failed to fetch image: HTTP {upstream_status}",
-                    "upstream_status_code": upstream_status,
-                }
-            },
-        )
-    except httpx.RequestError as e:
-        logger.warning(f"Request error fetching image {url}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"error": {"code": "FETCH_FAILED", "message": "Failed to fetch image"}},
-        )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"error": {"code": "FETCH_FAILED", "message": f"Failed to fetch image: {e}"}},
+            )
 
     # Validate and get image info
     try:

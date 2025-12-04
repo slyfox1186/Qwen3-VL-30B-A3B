@@ -67,12 +67,17 @@ class VLLMClient:
                 "max_completion_tokens": max_tokens,
                 "temperature": temperature,
                 "stream": True,
+                # Enable Qwen3 thinking mode - outputs <think>...</think> tags
+                "extra_body": {
+                    "chat_template_kwargs": {"enable_thinking": True},
+                },
             }
             if tools:
                 kwargs["tools"] = tools
             if tool_choice:
                 kwargs["tool_choice"] = tool_choice
 
+            logger.info(f"Sending to vLLM with extra_body: {kwargs.get('extra_body')}")
             stream = await self._client.chat.completions.create(**kwargs)
 
             async for chunk in stream:
@@ -127,6 +132,9 @@ class VLLMClient:
                 messages=messages,
                 max_completion_tokens=max_tokens,
                 temperature=temperature,
+                extra_body={
+                    "chat_template_kwargs": {"enable_thinking": True},
+                },
             )
 
             choice = response.choices[0]

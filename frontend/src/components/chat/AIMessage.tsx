@@ -9,6 +9,7 @@ import { ImageViewer } from './ImageViewer';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Button } from '@/components/ui/button';
 import MarkdownItRenderer from './MarkdownItRenderer';
+import { ThinkingBubble } from './ThinkingBubble';
 
 interface AIMessageProps {
   message: Message;
@@ -33,8 +34,17 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
       </Avatar>
 
       <div className="ai-content-wrapper">
+        {/* Thinking Bubble */}
+        {message.thought && (
+          <ThinkingBubble 
+            content={message.thought} 
+            isComplete={!isStreaming || (!!message.content && message.content.length > 0)}
+            data-testid="thinking-bubble"
+          />
+        )}
+
         {/* Main Content */}
-        {message.content || message.search_results ? (
+        {(message.content || message.search_results) ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -60,7 +70,7 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
             )}
           </motion.div>
         ) : (
-          isStreaming && (
+          isStreaming && !message.thought && (
             <div className="loading-dots-container">
               <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0 }} />
               <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0.2 }} />

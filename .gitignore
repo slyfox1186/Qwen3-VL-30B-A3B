@@ -23,6 +23,7 @@ venv/
 .vscode/
 *.swp
 *.swo
+.mcp.json
 
 # OS
 .DS_Store

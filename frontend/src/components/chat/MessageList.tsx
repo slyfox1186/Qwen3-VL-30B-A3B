@@ -13,6 +13,7 @@ interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
   currentContent: string;
+  currentThought?: string;
   currentSearchResults?: SearchResult[];
   currentSearchQuery?: string;
   onImageReview?: (imageUrl: string) => void;
@@ -27,6 +28,7 @@ export default function MessageList({
   messages,
   isStreaming,
   currentContent,
+  currentThought,
   currentSearchResults,
   currentSearchQuery,
   onImageReview,
@@ -82,6 +84,7 @@ export default function MessageList({
               id: 'streaming',
               role: 'assistant',
               content: currentContent,
+              thought: currentThought,
               search_results: currentSearchResults,
               search_query: currentSearchQuery,
               created_at: new Date().toISOString(),

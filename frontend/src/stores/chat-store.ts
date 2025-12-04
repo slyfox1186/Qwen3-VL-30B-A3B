@@ -5,6 +5,7 @@ interface ChatState {
   messages: Message[];
   isStreaming: boolean;
   currentContent: string; // Accumulates content during stream
+  currentThought: string; // Accumulates thought during stream
   currentSearchResults: SearchResult[] | undefined;
   currentSearchQuery: string | undefined;
   error: string | null;
@@ -14,6 +15,7 @@ interface ChatState {
   setMessages: (messages: Message[]) => void;
   setStreaming: (isStreaming: boolean) => void;
   appendContent: (delta: string) => void;
+  appendThought: (delta: string) => void;
   setSearchResults: (results: SearchResult[], query?: string) => void;
   resetCurrentStream: () => void;
   setError: (error: string | null) => void;
@@ -25,6 +27,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   isStreaming: false,
   currentContent: '',
+  currentThought: '',
   currentSearchResults: undefined,
   currentSearchQuery: undefined,
   error: null,
@@ -34,8 +37,9 @@ export const useChatStore = create<ChatState>((set) => ({
   setMessages: (messages) => set({ messages }),
   setStreaming: (isStreaming) => set({ isStreaming }),
   appendContent: (delta) => set((state) => ({ currentContent: state.currentContent + delta })),
+  appendThought: (delta) => set((state) => ({ currentThought: state.currentThought + delta })),
   setSearchResults: (results, query) => set({ currentSearchResults: results, currentSearchQuery: query }),
-  resetCurrentStream: () => set({ currentContent: '', currentSearchResults: undefined, currentSearchQuery: undefined }),
+  resetCurrentStream: () => set({ currentContent: '', currentThought: '', currentSearchResults: undefined, currentSearchQuery: undefined }),
   setError: (error) => set({ error }),
   setEditingMessageId: (id) => set({ editingMessageId: id }),
   removeMessagesFrom: (messageId) =>

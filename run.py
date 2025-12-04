@@ -350,8 +350,6 @@ def main():
             backend_proc = subprocess.Popen(
                 uvicorn_cmd,
                 cwd=BACKEND_DIR,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
             )
 
             _processes.append(backend_proc)

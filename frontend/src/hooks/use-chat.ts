@@ -15,9 +15,11 @@ export function useChat() {
     isStreaming,
     setStreaming,
     appendContent,
+    appendThought,
     setSearchResults,
     resetCurrentStream,
     currentContent,
+    currentThought,
     currentSearchResults,
     currentSearchQuery,
     setError: setChatError,
@@ -47,10 +49,11 @@ export function useChat() {
         throw new Error('Failed to load history');
       }
       const data = await res.json();
-      const historyMessages: Message[] = data.messages.map((msg: { id: string; role: string; content: string; created_at: string; search_results?: SearchResult[]; search_query?: string }) => ({
+      const historyMessages: Message[] = data.messages.map((msg: { id: string; role: string; content: string; thought?: string; created_at: string; search_results?: SearchResult[]; search_query?: string }) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,
+        thought: msg.thought,
         search_results: msg.search_results,
         search_query: msg.search_query,
         created_at: msg.created_at,
@@ -164,6 +167,9 @@ export function useChat() {
                 case 'content_delta':
                   if (event.content) appendContent(event.content);
                   break;
+                case 'thought_delta':
+                  if (event.content) appendThought(event.content);
+                  break;
                 case 'images':
                   console.log('[SSE] images event received:', {
                     imagesCount: event.images?.length,
@@ -204,6 +210,7 @@ export function useChat() {
         id: uuidv4(),
         role: 'assistant',
         content: state.currentContent,
+        thought: state.currentThought,
         search_results: capturedSearchResults || state.currentSearchResults,
         search_query: capturedSearchQuery || state.currentSearchQuery,
         created_at: new Date().toISOString(),
@@ -240,7 +247,7 @@ export function useChat() {
       resetCurrentStream();
       abortControllerRef.current = null;
     }
-  }, [session, createSession, addMessage, setStreaming, resetCurrentStream, appendContent, setSearchResults, setChatError, messages, updateSessionTitle, generateLLMTitle]);
+  }, [session, createSession, addMessage, setStreaming, resetCurrentStream, appendContent, appendThought, setSearchResults, setChatError, messages, updateSessionTitle, generateLLMTitle]);
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -334,6 +341,9 @@ export function useChat() {
                   case 'content_delta':
                     if (event.content) appendContent(event.content);
                     break;
+                  case 'thought_delta':
+                    if (event.content) appendThought(event.content);
+                    break;
                   case 'images':
                     if (event.images) {
                       capturedSearchResults = event.images;
@@ -358,6 +368,7 @@ export function useChat() {
           id: uuidv4(),
           role: 'assistant',
           content: state.currentContent,
+          thought: state.currentThought,
           search_results: capturedSearchResults || state.currentSearchResults,
           search_query: capturedSearchQuery || state.currentSearchQuery,
           created_at: new Date().toISOString(),
@@ -377,7 +388,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [session, isStreaming, removeMessagesFrom, setStreaming, resetCurrentStream, appendContent, setSearchResults, addMessage, setChatError]
+    [session, isStreaming, removeMessagesFrom, setStreaming, resetCurrentStream, appendContent, appendThought, setSearchResults, addMessage, setChatError]
   );
 
   return {
@@ -390,6 +401,7 @@ export function useChat() {
     messages,
     isStreaming,
     currentContent,
+    currentThought,
     currentSearchResults,
     currentSearchQuery,
     editingMessageId,

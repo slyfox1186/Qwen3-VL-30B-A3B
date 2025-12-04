@@ -19,6 +19,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  thought?: string;
   images?: string[]; // Base64 strings or URLs (input)
   search_results?: SearchResult[]; // Images found by search
   search_query?: string; // Query used for search
@@ -39,6 +40,7 @@ export interface ChatResponseSync {
   request_id: string;
   session_id: string;
   content: string;
+  thought?: string;
   search_results?: SearchResult[];
   usage?: {
     prompt_tokens: number;
@@ -49,6 +51,9 @@ export interface ChatResponseSync {
 
 export type SSEEventType =
   | 'start'
+  | 'thought_start'
+  | 'thought_delta'
+  | 'thought_end'
   | 'content_start'
   | 'content_delta'
   | 'content_end'
@@ -60,6 +65,7 @@ export interface SSEEvent {
   type: SSEEventType;
   request_id?: string;
   content?: string;
+  thought?: string;
   images?: SearchResult[];
   query?: string;
   error?: string;

@@ -41,6 +41,7 @@ class Message:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     role: str = "user"  # user or assistant
     content: str = ""
+    thought: str | None = None
     images: list[ImageAttachment] = field(default_factory=list)
     search_results: list[dict[str, Any]] | None = None
     search_query: str | None = None
@@ -63,6 +64,7 @@ class Message:
             "id": self.id,
             "role": self.role,
             "content": self.content,
+            "thought": self.thought,
             "images": [img.to_dict() for img in self.images],
             "search_results": self.search_results,
             "search_query": self.search_query,
@@ -85,6 +87,7 @@ class Message:
             id=data.get("id", str(uuid.uuid4())),
             role=data["role"],
             content=data["content"],
+            thought=data.get("thought"),
             images=images,
             search_results=data.get("search_results"),
             search_query=data.get("search_query"),
@@ -105,6 +108,9 @@ class Message:
             "content": self.content,
             "created_at": self.created_at_datetime.isoformat(),
         }
+
+        if self.thought:
+            result["thought"] = self.thought
 
         if self.images:
             result["images"] = [img.data_url for img in self.images]
