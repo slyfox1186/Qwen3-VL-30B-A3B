@@ -108,6 +108,14 @@ export function useChat() {
     abortControllerRef.current = new AbortController();
 
     try {
+      // Process images and log for debugging
+      const processedImages = images.map((img, idx) => {
+        const data = img.split(',')[1] || img;
+        console.log(`[sendMessage] Image ${idx + 1}/${images.length}: ${data.length} chars, prefix: ${data.slice(0, 20)}...`);
+        return { data };
+      });
+      console.log(`[sendMessage] Sending ${processedImages.length} images to backend`);
+
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: {
@@ -116,7 +124,7 @@ export function useChat() {
         },
         body: JSON.stringify({
           message: content,
-          images: images.map(img => ({ data: img.split(',')[1] || img })), // Strip prefix if present, backend might handle it but being safe
+          images: processedImages,
         }),
         signal: abortControllerRef.current.signal,
       });
