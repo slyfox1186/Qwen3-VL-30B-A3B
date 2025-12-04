@@ -73,6 +73,18 @@ def print_separator():
     print()
 
 
+def get_local_ip() -> str:
+    """Get the local network IP address."""
+    try:
+        result = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # First IP is typically the primary network interface
+            return result.stdout.strip().split()[0]
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
 def wait_for_vllm_status(url: str, timeout_seconds: int = 120) -> bool:
     """Wait for vLLM health endpoint to respond."""
     try:
@@ -315,7 +327,9 @@ def main():
                 )
 
             _processes.append(frontend_proc)
+            local_ip = get_local_ip()
             print_status("✅", "Started on http://localhost:3000")
+            print_status("✅", f"Started on http://{local_ip}:3000")
             time.sleep(2)
 
         # 2. Start Backend (unless frontend-only)
@@ -415,11 +429,13 @@ def main():
 
         # Summary
         print()
+        local_ip = get_local_ip()
         print("╔════════════════════════════════════════════════════════════╗")
         print("║                    ✅  ALL SERVICES READY                  ║")
         print("╠════════════════════════════════════════════════════════════╣")
         if frontend_proc:
             print("║  🌐  Frontend    http://localhost:3000                     ║")
+            print(f"║  🌐  Network     http://{local_ip}:3000                  ║")
         if backend_proc:
             print(f"║  🔧  Backend     http://{BACKEND_HOST}:{BACKEND_PORT}                        ║")
         if vllm_proc or (not no_vllm and not frontend_only):

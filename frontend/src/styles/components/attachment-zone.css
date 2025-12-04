@@ -1,0 +1,17 @@
+.attachment-zone-container {
+  @apply flex gap-3 px-4 pt-3 overflow-x-auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.attachment-zone-container::-webkit-scrollbar {
+  display: none;
+}
+
+.attachment-item {
+  @apply relative shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-border bg-muted shadow-sm transition-transform hover:scale-105;
+}
+
+.attachment-remove-btn {
+  @apply absolute top-0.5 right-0.5 bg-black/60 hover:bg-red-600 text-white rounded-full p-1 backdrop-blur-md transition-all opacity-0 group-hover:opacity-100 scale-90 hover:scale-105;
+}

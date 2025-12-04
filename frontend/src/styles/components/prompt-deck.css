@@ -1,0 +1,24 @@
+.mask-linear-fade {
+  mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.prompt-deck-container {
+  @apply relative w-full mb-4;
+}
+
+.prompt-card-base {
+  @apply relative shrink-0 w-40 h-24 rounded-xl border text-left p-3 
+         bg-background/50 backdrop-blur-sm hover:bg-background/80 transition-all duration-300 
+         border-white/10 dark:border-white/5 shadow-sm hover:shadow-md cursor-pointer;
+  perspective: 1000px;
+}
+
+.prompt-card-glare {
+  @apply absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br pointer-events-none;
+}
+
+.prompt-card-content {
+  @apply relative z-10 flex flex-col h-full justify-between pointer-events-none transform-gpu;
+  transform: translateZ(20px);
+}

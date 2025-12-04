@@ -23,7 +23,42 @@
 }
 
 .suggestion-chip {
-  @apply flex items-center px-3 py-1.5 rounded-full bg-background/80 border border-border shadow-sm text-xs font-medium text-muted-foreground hover:text-primary hover:bg-primary/5 hover:border-primary/30 transition-all;
+  @apply relative flex items-center gap-2 px-4 py-2.5 rounded-2xl 
+         bg-background/40 backdrop-blur-md 
+         border border-white/10 
+         text-xs font-medium text-muted-foreground 
+         shadow-md shadow-black/5
+         cursor-pointer overflow-hidden 
+         transition-all duration-300 ease-out;
+}
+
+/* Gradient overlay on hover */
+.suggestion-chip::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent 
+         opacity-0 transition-opacity duration-300;
+}
+
+.suggestion-chip:hover {
+  @apply -translate-y-0.5 text-primary border-primary/30 
+         shadow-lg shadow-primary/10
+         bg-background/60;
+}
+
+.suggestion-chip:hover::before {
+  @apply opacity-100;
+}
+
+.suggestion-chip:active {
+  @apply translate-y-0 scale-95 duration-100;
+}
+
+.suggestion-chip svg {
+  @apply text-primary/70 transition-all duration-300;
+}
+
+.suggestion-chip:hover svg {
+  @apply text-primary scale-110 rotate-3;
 }
 
 .voice-button {

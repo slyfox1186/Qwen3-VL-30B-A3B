@@ -51,6 +51,46 @@ class ImageProcessor:
         "webp": "image/webp",
     }
 
+    # Magic bytes for common image formats (including unsupported ones for error messages)
+    FORMAT_SIGNATURES = {
+        b"\x00\x00\x00\x1cftyp": "avif",  # AVIF (ftyp box)
+        b"\x00\x00\x00\x20ftyp": "avif",  # AVIF variant
+        b"\x00\x00\x00\x18ftyp": "heic",  # HEIC/HEIF
+        b"\x00\x00\x00\x24ftyp": "heic",  # HEIC variant
+        b"RIFF": "webp",  # WebP (check for WEBP after)
+        b"\x89PNG": "png",
+        b"\xff\xd8\xff": "jpeg",
+        b"GIF87a": "gif",
+        b"GIF89a": "gif",
+        b"BM": "bmp",
+        b"II*\x00": "tiff",
+        b"MM\x00*": "tiff",
+    }
+
+    def _detect_format_from_bytes(self, data: bytes) -> str | None:
+        """Detect image format from magic bytes for better error messages."""
+        if len(data) < 12:
+            return None
+
+        # Check AVIF/HEIC (ftyp box at offset 4)
+        if len(data) >= 12 and data[4:8] == b"ftyp":
+            brand = data[8:12].decode("ascii", errors="ignore").lower()
+            if "avif" in brand:
+                return "avif"
+            if "heic" in brand or "heix" in brand or "mif1" in brand:
+                return "heic"
+
+        # Check other formats by prefix
+        for sig, fmt in self.FORMAT_SIGNATURES.items():
+            if data.startswith(sig):
+                # Special case for WebP - verify WEBP marker
+                if fmt == "webp" and len(data) >= 12:
+                    if data[8:12] != b"WEBP":
+                        continue
+                return fmt
+
+        return None
+
     def __init__(
         self,
         max_size_bytes: int | None = None,
@@ -108,6 +148,16 @@ class ImageProcessor:
                 width, height = img.size
 
         except Exception as e:
+            error_msg = str(e).lower()
+            # Check for common unsupported format indicators
+            if "cannot identify" in error_msg or "not identified" in error_msg:
+                # Try to detect format from magic bytes for better error message
+                format_hint = self._detect_format_from_bytes(image_bytes)
+                if format_hint:
+                    raise ImageValidationError(
+                        f"Unsupported image format: {format_hint}. "
+                        f"Allowed: {', '.join(self._allowed_formats)}"
+                    )
             raise ImageValidationError(f"Invalid or corrupted image: {e}")
 
         if not detected_format or detected_format not in self._allowed_formats:

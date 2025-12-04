@@ -88,7 +88,7 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
               variant="ghost"
               size="sm"
               onClick={() => onRegenerate(message.id)}
-              className="ai-regenerate-button"
+              className="ai-regenerate-button group-hover:opacity-100"
               title="Regenerate response"
             >
               <RefreshCw className="w-3.5 h-3.5 mr-1.5" />

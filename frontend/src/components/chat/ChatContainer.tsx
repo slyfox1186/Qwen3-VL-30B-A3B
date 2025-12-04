@@ -180,8 +180,11 @@ export default function ChatContainer() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Proxy fetch failed:', response.status, response.statusText, errorData);
-        throw new Error(errorData.error?.message || `Failed to fetch image: ${response.status} ${response.statusText}`);
+        const message = errorData.detail?.error?.message
+          || errorData.error?.message
+          || `Failed to fetch image: ${response.status} ${response.statusText}`;
+        toast.error(message);
+        return;
       }
 
       const data = await response.json();

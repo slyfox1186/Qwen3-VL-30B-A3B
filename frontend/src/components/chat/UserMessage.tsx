@@ -252,7 +252,7 @@ export default function UserMessage({
               <div className="user-text-bubble">
                 <p className="user-text">{message.content}</p>
               </div>
-              <div className="user-message-actions">
+              <div className="user-message-actions group-hover:opacity-100">
                 <CopyButton
                   text={message.content}
                   className="text-muted-foreground hover:text-foreground hover:bg-muted h-7 w-7"

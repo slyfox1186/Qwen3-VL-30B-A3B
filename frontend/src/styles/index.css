@@ -11,4 +11,7 @@
 @import "./components/message-list.css";
 @import "./components/copy-button.css";
 @import "./components/qwen-logo.css";
+@import "./components/composer.css";
+@import "./components/prompt-deck.css";
+@import "./components/attachment-zone.css";
 @import "./markdown-it-renderer.css";

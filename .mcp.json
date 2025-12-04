@@ -5,7 +5,7 @@
       "args": [
         "@supabase/mcp-server-supabase@latest",
         "--access-token",
-        "sbp_04e8548f3a33c640baca4d4a35794bbd7bc00d29",
+        "sbp_918dc6c92d58b7e5fb9793231476fc44fa4209bb",
         "--project-ref",
         "upcbjpcbgoukwsltllun"
       ]

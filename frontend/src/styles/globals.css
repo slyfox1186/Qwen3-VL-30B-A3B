@@ -309,6 +309,13 @@ html.theme-transition *::after {
   .slide-in-from-right-full { --tw-enter-translate-x: 100%; }
   .slide-out-to-right-full { --tw-exit-translate-x: 100%; }
   .duration-200 { animation-duration: 200ms; }
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes enter {

@@ -51,5 +51,5 @@
 }
 
 .ai-regenerate-button {
-  @apply h-7 px-2 text-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-200;
+  @apply h-7 px-2 text-xs text-muted-foreground hover:text-foreground opacity-0 transition-opacity duration-200;
 }
