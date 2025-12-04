@@ -15,15 +15,28 @@
 }
 
 .sidebar-actions {
-  @apply p-3;
+  @apply p-3 space-y-3;
 }
 
 .new-chat-button {
   @apply w-full justify-start gap-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none;
 }
 
+.sidebar-search-wrapper {
+  @apply relative flex items-center;
+}
+
+.search-icon {
+  @apply absolute left-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none;
+}
+
+.sidebar-search-input {
+  @apply w-full bg-sidebar-accent/50 border border-sidebar-border rounded-md pl-8 pr-3 py-1.5 text-xs;
+  @apply text-sidebar-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all;
+}
+
 .sidebar-list {
-  @apply flex-1 overflow-y-auto p-3 space-y-1;
+  @apply flex-1 overflow-y-auto p-3 space-y-4;
   scrollbar-width: thin;
   &::-webkit-scrollbar {
     width: 6px;
@@ -35,6 +48,18 @@
     background: var(--sidebar-border);
     border-radius: 3px;
   }
+}
+
+.session-group {
+  @apply space-y-1;
+}
+
+.group-header {
+  @apply flex items-center px-3 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider;
+}
+
+.group-items {
+  @apply space-y-0.5;
 }
 
 .empty-state {
@@ -58,7 +83,20 @@
 }
 
 .session-text {
-  @apply truncate flex-1 pr-6;
+  @apply truncate flex-1 pr-14;
+}
+
+.session-edit-input {
+  @apply flex-1 bg-transparent border-b border-primary/50 text-sm px-0 py-0.5 outline-none;
+  @apply text-foreground placeholder:text-muted-foreground;
+}
+
+.edit-session-wrapper {
+  @apply absolute right-8 top-1/2 -translate-y-1/2;
+}
+
+.edit-session-button {
+  @apply h-6 w-6 text-muted-foreground hover:text-primary hover:bg-primary/10;
 }
 
 .delete-session-wrapper {

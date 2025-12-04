@@ -42,7 +42,6 @@ class Message:
     role: str = "user"  # user or assistant
     content: str = ""
     images: list[ImageAttachment] = field(default_factory=list)
-    thinking: str | None = None
     search_results: list[dict[str, Any]] | None = None
     search_query: str | None = None
     created_at: float = field(default_factory=time.time)
@@ -65,7 +64,6 @@ class Message:
             "role": self.role,
             "content": self.content,
             "images": [img.to_dict() for img in self.images],
-            "thinking": self.thinking,
             "search_results": self.search_results,
             "search_query": self.search_query,
             "created_at": self.created_at,
@@ -88,7 +86,6 @@ class Message:
             role=data["role"],
             content=data["content"],
             images=images,
-            thinking=data.get("thinking"),
             search_results=data.get("search_results"),
             search_query=data.get("search_query"),
             created_at=data.get("created_at", time.time()),
@@ -112,7 +109,10 @@ class Message:
         if self.images:
             result["images"] = [img.data_url for img in self.images]
 
-        if self.thinking:
-            result["thinking"] = self.thinking
+        if self.search_results:
+            result["search_results"] = self.search_results
+
+        if self.search_query:
+            result["search_query"] = self.search_query
 
         return result

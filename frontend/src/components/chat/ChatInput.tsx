@@ -3,11 +3,41 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, ImagePlus, StopCircle, X, Paperclip } from 'lucide-react';
+import { Send, ImagePlus, StopCircle, X, Paperclip, Mic, MicOff, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+
+// Speech Recognition Interfaces
+interface SpeechRecognitionEvent extends Event {
+  results: {
+    [key: number]: {
+      [key: number]: {
+        transcript: string;
+      };
+    };
+  } & Iterable<unknown>;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+  message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (event: Event) => void;
+  onend: (event: Event) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+}
 
 interface ChatInputProps {
   onSend: (content: string, images: string[]) => void;
@@ -15,12 +45,21 @@ interface ChatInputProps {
   isStreaming: boolean;
 }
 
+const SUGGESTIONS = [
+  "Describe this image",
+  "Summarize this text",
+  "Write a Python script",
+  "Explain quantum physics"
+];
+
 export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProps) {
   const [input, setInput] = useState('');
-  const [images, setImages] = useState<string[]>([]); // Base64 strings
+  const [images, setImages] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -29,6 +68,51 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [input]);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SpeechRecognitionConstructor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (SpeechRecognitionConstructor) {
+        const recognition = new SpeechRecognitionConstructor() as SpeechRecognition;
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error('Speech recognition error', event.error);
+          setIsListening(false);
+          toast.error('Voice input failed: ' + event.error);
+        };
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = (event.results as any)[0][0];
+          const transcript = result.transcript;
+          setInput(prev => (prev ? prev + ' ' + transcript : transcript));
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+  }, []);
+
+  const toggleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      toast.error('Speech recognition not supported in this browser.');
+      return;
+    }
+    
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+      toast.info('Listening...');
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -119,13 +203,44 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
     }
   }, [processFiles]);
 
+  const handleSuggestionClick = (suggestion: string) => {
+    setInput(suggestion);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
   return (
     <div className="chat-input-container">
+      {/* Suggestions */}
+      <AnimatePresence>
+        {!input && images.length === 0 && !isStreaming && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="suggestions-container"
+          >
+            {SUGGESTIONS.map((s, i) => (
+              <button 
+                key={i} 
+                onClick={() => handleSuggestionClick(s)}
+                className="suggestion-chip"
+              >
+                <Sparkles className="w-3 h-3 mr-1.5 text-primary" />
+                {s}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.div 
         layout
         className={cn(
           "chat-input-wrapper",
-          isDragging ? "dragging" : "default"
+          isDragging ? "dragging" : "default",
+          isListening ? "listening" : ""
         )}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -176,9 +291,9 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
                   </div>
                   <button 
                     onClick={() => removeImage(idx)}
-                    className="image-preview-remove group-hover:opacity-100"
+                    className="image-preview-remove"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </motion.div>
               ))}
@@ -188,16 +303,30 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
 
         {/* Input Area */}
         <div className="chat-input-controls">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="attach-button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isStreaming || images.length >= 4}
-          >
-            <Paperclip className="w-5 h-5" />
-            <span className="sr-only">Attach files</span>
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="attach-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || images.length >= 4}
+              title="Attach images"
+            >
+              <Paperclip className="w-5 h-5" />
+              <span className="sr-only">Attach files</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("voice-button", isListening && "text-red-500 animate-pulse")}
+              onClick={toggleVoiceInput}
+              disabled={isStreaming}
+              title={isListening ? "Stop recording" : "Voice input"}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </Button>
+          </div>
+          
           <input 
             type="file" 
             ref={fileInputRef}
@@ -213,7 +342,7 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ask anything about images..."
+            placeholder={isListening ? "Listening..." : "Ask anything about images..."}
             className="chat-textarea"
             rows={1}
           />

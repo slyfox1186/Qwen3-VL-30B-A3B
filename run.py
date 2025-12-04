@@ -5,6 +5,7 @@ Qwen3-VL Chat Application Runner
 Starts: Frontend (Next.js) → Backend (FastAPI) → vLLM (if needed)
 """
 
+import atexit
 import os
 import signal
 import subprocess
@@ -18,6 +19,10 @@ import psutil
 ROOT_DIR = Path(__file__).parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 BACKEND_DIR = ROOT_DIR / "backend"
+
+# Global process tracking for cleanup
+_processes: list[subprocess.Popen] = []
+_shutting_down = False
 
 
 def load_env():
@@ -160,7 +165,92 @@ def get_gpu_status() -> str:
     return "Unknown"
 
 
+def kill_process_tree(proc: subprocess.Popen, timeout: float = 3.0) -> None:
+    """Kill a process and all its children."""
+    try:
+        parent = psutil.Process(proc.pid)
+        children = parent.children(recursive=True)
+
+        # Send SIGTERM to children first
+        for child in children:
+            try:
+                child.terminate()
+            except psutil.NoSuchProcess:
+                pass
+
+        # Terminate parent
+        parent.terminate()
+
+        # Wait briefly for graceful shutdown
+        gone, alive = psutil.wait_procs([parent] + children, timeout=timeout)
+
+        # Force kill any remaining
+        for p in alive:
+            try:
+                p.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    except psutil.NoSuchProcess:
+        pass
+    except Exception:
+        # Fallback: just try to kill the main process
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def graceful_shutdown(signum: int | None = None, frame=None) -> None:
+    """Handle graceful shutdown of all processes."""
+    global _shutting_down
+
+    if _shutting_down:
+        return
+    _shutting_down = True
+
+    print()
+    print_header("SHUTTING DOWN")
+
+    # Shutdown in reverse order (vLLM last to keep model in VRAM if desired)
+    for proc in reversed(_processes):
+        if proc and proc.poll() is None:
+            try:
+                # Identify process for logging
+                try:
+                    p = psutil.Process(proc.pid)
+                    name = p.name()
+                except Exception:
+                    name = f"PID {proc.pid}"
+
+                print_status("🛑", f"Stopping {name}...")
+                kill_process_tree(proc, timeout=3.0)
+            except Exception:
+                pass
+
+    print()
+    print_status("✅", "All services stopped.")
+    print()
+
+    # Exit immediately
+    os._exit(0)
+
+
+def setup_signal_handlers() -> None:
+    """Set up signal handlers for graceful shutdown."""
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+
+    # Also register with atexit as a fallback
+    atexit.register(graceful_shutdown)
+
+
 def main():
+    global _processes
+
+    # Set up signal handlers first
+    setup_signal_handlers()
+
     # Parse arguments
     prod_mode = "--prod" in sys.argv
     no_vllm = "--no-vllm" in sys.argv
@@ -224,6 +314,7 @@ def main():
                     stderr=subprocess.DEVNULL,
                 )
 
+            _processes.append(frontend_proc)
             print_status("✅", "Started on http://localhost:3000")
             time.sleep(2)
 
@@ -263,6 +354,7 @@ def main():
                 stderr=subprocess.DEVNULL,
             )
 
+            _processes.append(backend_proc)
             print_status("✅", f"Started on http://{BACKEND_HOST}:{BACKEND_PORT}")
             print_status("📚", f"API Docs: http://{BACKEND_HOST}:{BACKEND_PORT}/docs")
             time.sleep(1)
@@ -307,14 +399,13 @@ def main():
                     "--enable-chunked-prefill",
                     "--kv-cache-dtype",
                     "fp8",
-                    "--trust-remote-code",
-                    # Tool calling support
                     "--enable-auto-tool-choice",
                     "--tool-call-parser",
                     "hermes",
                 ]
 
                 vllm_proc = subprocess.Popen(vllm_cmd, env=env)
+                _processes.append(vllm_proc)
 
                 print_status("⏳", "Loading model (this may take a few minutes)...")
                 print_status("📦", f"Model: {VLLM_MODEL}", indent=1)
@@ -354,37 +445,13 @@ def main():
             time.sleep(1)
 
     except KeyboardInterrupt:
-        print()
-        print_header("SHUTTING DOWN")
+        # Signal handler will take care of cleanup
+        pass
 
-    finally:
-        if frontend_proc and frontend_proc.poll() is None:
-            print_status("🛑", "Stopping frontend...")
-            frontend_proc.terminate()
-            try:
-                frontend_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                frontend_proc.kill()
-
-        if backend_proc and backend_proc.poll() is None:
-            print_status("🛑", "Stopping backend...")
-            backend_proc.terminate()
-            try:
-                backend_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                backend_proc.kill()
-
-        if vllm_proc and vllm_proc.poll() is None:
-            print_status("🛑", "Stopping vLLM...")
-            vllm_proc.terminate()
-            try:
-                vllm_proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                vllm_proc.kill()
-
-        print()
-        print_status("✅", "All services stopped.")
-        print()
+    except Exception as e:
+        print_status("❌", f"Error: {e}")
+        graceful_shutdown()
+        return 1
 
     return 0
 

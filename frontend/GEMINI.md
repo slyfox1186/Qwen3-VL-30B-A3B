@@ -10,3 +10,6 @@ Next.js 16 frontend with React 19 for Qwen3-VL chat UI, SSE streaming, Zustand s
 
 ## Dependencies/Relations
 Contains `src/` (app, components, hooks, stores, types). Connects to backend API at localhost:8080.
+
+## Rules
+- **CSS**: You MUST create a dedicated CSS file for EVERY TSX script instead of using inline CSS.

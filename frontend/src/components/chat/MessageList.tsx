@@ -3,30 +3,38 @@
 import React, { useRef, useEffect } from 'react';
 import { Message, SearchResult } from '@/types/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Brain, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 import UserMessage from './UserMessage';
 import AIMessage from './AIMessage';
+import QwenLogo from './QwenLogo';
 
 interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
-  currentThinking: string;
   currentContent: string;
   currentSearchResults?: SearchResult[];
   currentSearchQuery?: string;
   onImageReview?: (imageUrl: string) => void;
+  editingMessageId: string | null;
+  onEditMessage?: (messageId: string) => void;
+  onSaveEdit?: (messageId: string, content: string, images: string[]) => void;
+  onCancelEdit?: () => void;
+  onRegenerate?: (messageId: string) => void;
 }
 
 export default function MessageList({
   messages,
   isStreaming,
-  currentThinking,
   currentContent,
   currentSearchResults,
   currentSearchQuery,
-  onImageReview
+  onImageReview,
+  editingMessageId,
+  onEditMessage,
+  onSaveEdit,
+  onCancelEdit,
+  onRegenerate,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -40,19 +48,33 @@ export default function MessageList({
         });
       }
     }
-  }, [messages, currentThinking, currentContent, isStreaming, currentSearchResults]);
+  }, [messages, currentContent, isStreaming, currentSearchResults]);
 
   return (
     <ScrollArea className="scroll-area" ref={scrollRef}>
       <div className="message-list-wrapper">
         {messages.map((msg) => (
           msg.role === 'user' ? (
-            <UserMessage key={msg.id} message={msg} />
+            <UserMessage
+              key={`${msg.id}-${editingMessageId === msg.id ? 'editing' : 'view'}`}
+              message={msg}
+              isEditing={editingMessageId === msg.id}
+              isStreaming={isStreaming}
+              onEdit={onEditMessage}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+            />
           ) : (
-            <AIMessage key={msg.id} message={msg} onImageReview={onImageReview} />
+            <AIMessage
+              key={msg.id}
+              message={msg}
+              isGlobalStreaming={isStreaming}
+              onImageReview={onImageReview}
+              onRegenerate={onRegenerate}
+            />
           )
         ))}
-        
+
         {isStreaming && (
           <AIMessage
             key="streaming-ai"
@@ -60,7 +82,6 @@ export default function MessageList({
               id: 'streaming',
               role: 'assistant',
               content: currentContent,
-              thinking: currentThinking,
               search_results: currentSearchResults,
               search_query: currentSearchQuery,
               created_at: new Date().toISOString(),
@@ -69,45 +90,15 @@ export default function MessageList({
             onImageReview={onImageReview}
           />
         )}
-        
+
         {messages.length === 0 && !isStreaming && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="empty-state-container"
+            className="empty-state-container flex flex-col items-center justify-center h-full min-h-[60vh]"
           >
-            <div className="empty-state-icon-wrapper">
-              <div className="empty-state-glow" />
-              <div className="empty-state-icon-box">
-                <Brain className="empty-state-main-icon" />
-                <motion.div 
-                  className="empty-state-sparkle-wrapper"
-                  animate={{ rotate: [0, 15, -15, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, repeatDelay: 1 }}
-                >
-                  <Sparkles className="empty-state-sparkle" />
-                </motion.div>
-              </div>
-            </div>
-            <h2 className="empty-state-title">Qwen3-VL-30B-A3B</h2>
-            <p className="empty-state-description">
-              Ready to analyze images and solve complex problems with advanced visual reasoning.
-            </p>
-            
-            <div className="suggestions-grid">
-               {['Analyze this chart', 'Explain this diagram', 'Extract code from screenshot', 'Identify this object'].map((label, i) => (
-                 <motion.div 
-                   key={label}
-                   initial={{ opacity: 0, y: 10 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ delay: 0.2 + (i * 0.1) }}
-                   className="suggestion-card"
-                 >
-                   {label}
-                 </motion.div>
-               ))}
-            </div>
+            <QwenLogo />
           </motion.div>
         )}
       </div>

@@ -40,7 +40,6 @@ class TokenUsage(BaseModel):
 
     prompt_tokens: int
     completion_tokens: int
-    thinking_tokens: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -49,7 +48,6 @@ class ChatResponse(BaseModel):
     request_id: str
     session_id: str
     content: str
-    thinking: str | None = None
     usage: TokenUsage | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -59,10 +57,16 @@ class StreamEvent(BaseModel):
 
     type: str = Field(
         ...,
-        description="Event type: start, thinking_start, thinking_delta, thinking_end, content_start, content_delta, content_end, done, error",
+        description="Event type: start, content_start, content_delta, content_end, done, error",
     )
     content: str | None = None
     request_id: str | None = None
     usage: TokenUsage | None = None
     error: str | None = None
     code: str | None = None
+
+
+class RegenerateRequest(BaseModel):
+    """Request to regenerate an AI response."""
+
+    message_id: str = Field(..., description="ID of the AI message to regenerate")

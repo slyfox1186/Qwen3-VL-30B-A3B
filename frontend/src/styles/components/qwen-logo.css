@@ -1,0 +1,17 @@
+/* Qwen Logo Styles */
+
+.qwen-logo-container {
+  @apply relative flex flex-col items-center justify-center;
+}
+
+.qwen-logo-text-wrapper {
+  @apply mt-8 text-center;
+}
+
+.qwen-logo-title {
+  @apply text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 tracking-wider font-sans;
+}
+
+.qwen-logo-subtitle {
+  @apply text-sm text-gray-400 mt-2 tracking-[0.3em] uppercase opacity-80;
+}

@@ -140,3 +140,48 @@ class ChatHistoryService:
         """
         count = max_messages or self._max_messages
         return await self.get_recent_messages(session_id, count)
+
+    async def truncate_at_message(
+        self,
+        session_id: str,
+        message_id: str,
+        ttl_seconds: int,
+    ) -> int | None:
+        """
+        Remove the specified message and all messages after it.
+
+        Args:
+            session_id: Session identifier
+            message_id: ID of the message to remove (along with all after it)
+            ttl_seconds: TTL for the history key
+
+        Returns:
+            Number of remaining messages, or None if message not found
+        """
+        key = RedisKeys.session_history(session_id)
+
+        # Get all messages to find the target index
+        messages = await self.get_history(session_id)
+
+        # Find index of target message
+        target_index = None
+        for i, msg in enumerate(messages):
+            if msg.id == message_id:
+                target_index = i
+                break
+
+        if target_index is None:
+            return None
+
+        # LTRIM keeps indices 0 to target_index - 1 (excludes target)
+        if target_index == 0:
+            # Removing first message means clear all
+            await self._redis.client.delete(key)
+            return 0
+        else:
+            async with self._redis.pipeline() as pipe:
+                await pipe.ltrim(key, 0, target_index - 1)
+                await pipe.expire(key, ttl_seconds)
+
+        logger.debug(f"Truncated history for session {session_id} at message {message_id}")
+        return target_index

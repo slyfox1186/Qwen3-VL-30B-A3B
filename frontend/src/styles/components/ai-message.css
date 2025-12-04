@@ -14,26 +14,6 @@
   @apply flex flex-col items-start max-w-[85%] min-w-0 gap-2;
 }
 
-.thinking-block {
-  @apply w-full rounded-xl border border-border/50 bg-muted/30 overflow-hidden;
-}
-
-.thinking-header {
-  @apply w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground/80 hover:text-primary hover:bg-muted/50 transition-colors;
-}
-
-.thinking-content-wrapper {
-  @apply overflow-hidden;
-}
-
-.thinking-text {
-  @apply px-4 pb-3 pt-0 text-sm text-muted-foreground font-mono border-t border-border/30 bg-black/[0.02] dark:bg-white/[0.02] leading-relaxed whitespace-pre-wrap;
-}
-
-.thinking-cursor {
-  @apply inline-block w-1.5 h-3 ml-1 align-middle bg-primary/50;
-}
-
 .ai-prose-container {
   @apply prose prose-zinc dark:prose-invert prose-sm max-w-none w-full bg-background/50 border border-border/40 px-6 py-5 rounded-2xl shadow-sm break-words leading-7;
 }
@@ -68,4 +48,8 @@
 
 .ai-timestamp {
   @apply text-[10px] text-muted-foreground/60 font-medium uppercase tracking-wider;
+}
+
+.ai-regenerate-button {
+  @apply h-7 px-2 text-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-200;
 }

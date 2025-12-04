@@ -19,7 +19,6 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  thinking?: string; // For the separate thinking block
   images?: string[]; // Base64 strings or URLs (input)
   search_results?: SearchResult[]; // Images found by search
   search_query?: string; // Query used for search
@@ -40,26 +39,21 @@ export interface ChatResponseSync {
   request_id: string;
   session_id: string;
   content: string;
-  thinking?: string;
   search_results?: SearchResult[];
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
-    thinking_tokens?: number;
   };
   created_at: string;
 }
 
-export type SSEEventType = 
-  | 'start' 
-  | 'thinking_start' 
-  | 'thinking_delta' 
-  | 'thinking_end' 
-  | 'content_start' 
-  | 'content_delta' 
+export type SSEEventType =
+  | 'start'
+  | 'content_start'
+  | 'content_delta'
   | 'content_end'
   | 'images'
-  | 'done' 
+  | 'done'
   | 'error';
 
 export interface SSEEvent {
@@ -74,4 +68,9 @@ export interface SSEEvent {
     prompt_tokens: number;
     completion_tokens: number;
   };
+}
+
+export interface TitleGenerateResponse {
+  title: string;
+  generated: boolean;
 }

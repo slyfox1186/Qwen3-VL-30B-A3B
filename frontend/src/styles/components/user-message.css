@@ -37,3 +37,41 @@
 .user-avatar-fallback {
   @apply bg-gradient-to-b from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900;
 }
+
+/* Message Actions (Copy & Edit buttons) */
+.user-message-actions {
+  @apply absolute bottom-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-primary/80 rounded-lg backdrop-blur-sm pl-1;
+}
+
+.user-edit-button {
+  @apply h-6 w-6 text-primary-foreground/60 hover:text-primary-foreground hover:bg-primary-foreground/10;
+}
+
+/* Edit Mode Container */
+.user-edit-container {
+  @apply w-full min-w-[300px] max-w-[500px] flex flex-col gap-2;
+}
+
+.user-edit-textarea {
+  @apply min-h-[80px] max-h-[300px] resize-none bg-background text-foreground border-border focus:ring-primary;
+}
+
+.user-edit-actions {
+  @apply flex items-center justify-between gap-2;
+}
+
+.user-edit-hint {
+  @apply text-xs text-muted-foreground;
+}
+
+.user-edit-buttons {
+  @apply flex items-center gap-2;
+}
+
+.user-edit-cancel {
+  @apply text-muted-foreground hover:text-foreground;
+}
+
+.user-edit-save {
+  @apply bg-primary text-primary-foreground hover:bg-primary/90;
+}

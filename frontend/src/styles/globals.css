@@ -33,39 +33,51 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  /* Soothing Light Theme (Warm/Paper) */
+  --background: oklch(0.985 0.005 100);
+  --foreground: oklch(0.21 0.03 265); /* Deep Slate */
+  
+  --card: oklch(0.99 0.002 100);
+  --card-foreground: oklch(0.21 0.03 265);
+  
+  --popover: oklch(0.99 0.002 100);
+  --popover-foreground: oklch(0.21 0.03 265);
+  
+  --primary: oklch(0.55 0.12 250); /* Calm Indigo */
+  --primary-foreground: oklch(0.985 0.005 100);
+  
+  --secondary: oklch(0.95 0.02 100); /* Warm Grey */
+  --secondary-foreground: oklch(0.21 0.03 265);
+  
+  --muted: oklch(0.96 0.01 100);
+  --muted-foreground: oklch(0.55 0.04 265);
+  
+  --accent: oklch(0.94 0.03 100);
+  --accent-foreground: oklch(0.21 0.03 265);
+  
+  --destructive: oklch(0.58 0.20 25); /* Soft Red */
+  --destructive-foreground: oklch(1 0 0); /* White text for readability */
+  
+  --border: oklch(0.90 0.02 100);
+  --input: oklch(0.90 0.02 100);
+  --ring: oklch(0.55 0.12 250);
+  
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  
   --radius: 0.625rem;
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.398 0.07 227.392);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  
+  --sidebar: oklch(0.97 0.01 100);
+  --sidebar-foreground: oklch(0.35 0.04 265);
+  --sidebar-primary: oklch(0.55 0.12 250);
+  --sidebar-primary-foreground: oklch(0.985 0.005 100);
+  --sidebar-accent: oklch(0.94 0.03 100);
+  --sidebar-accent-foreground: oklch(0.21 0.03 265);
+  --sidebar-border: oklch(0.90 0.02 100);
+  --sidebar-ring: oklch(0.55 0.12 250);
 }
 
 .dark {
@@ -103,11 +115,112 @@
   --sidebar-ring: oklch(0.446 0.043 257.281);
 }
 
+/* Theme transition - smooth color changes when switching themes */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease,
+              color 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease !important;
+  transition-delay: 0s !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Tailwind v4 animation utilities (replaces tailwindcss-animate plugin) */
+@keyframes enter {
+  from {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0)
+      scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1))
+      rotate(var(--tw-enter-rotate, 0));
+  }
+}
+
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0)
+      scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1))
+      rotate(var(--tw-exit-rotate, 0));
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation-name: enter;
+    animation-duration: 150ms;
+    --tw-enter-opacity: initial;
+    --tw-enter-scale: initial;
+    --tw-enter-rotate: initial;
+    --tw-enter-translate-x: initial;
+    --tw-enter-translate-y: initial;
+  }
+
+  .animate-out {
+    animation-name: exit;
+    animation-duration: 150ms;
+    --tw-exit-opacity: initial;
+    --tw-exit-scale: initial;
+    --tw-exit-rotate: initial;
+    --tw-exit-translate-x: initial;
+    --tw-exit-translate-y: initial;
+  }
+
+  .fade-in {
+    --tw-enter-opacity: 0;
+  }
+
+  .fade-in-0 {
+    --tw-enter-opacity: 0;
+  }
+
+  .fade-out-0 {
+    --tw-exit-opacity: 0;
+  }
+
+  .zoom-in-95 {
+    --tw-enter-scale: 0.95;
+  }
+
+  .zoom-out-95 {
+    --tw-exit-scale: 0.95;
+  }
+
+  .slide-in-from-top-2 {
+    --tw-enter-translate-y: -0.5rem;
+  }
+
+  .slide-in-from-bottom-2 {
+    --tw-enter-translate-y: 0.5rem;
+  }
+
+  .slide-in-from-left-2 {
+    --tw-enter-translate-x: -0.5rem;
+  }
+
+  .slide-in-from-right-2 {
+    --tw-enter-translate-x: 0.5rem;
+  }
+
+  .slide-in-from-right-full {
+    --tw-enter-translate-x: 100%;
+  }
+
+  .slide-out-to-right-full {
+    --tw-exit-translate-x: 100%;
+  }
+
+  .duration-200 {
+    animation-duration: 200ms;
   }
 }

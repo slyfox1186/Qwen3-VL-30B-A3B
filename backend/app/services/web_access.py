@@ -16,9 +16,10 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-QUERY_OPTIMIZER_SYSTEM = """Your ONLY job is to return an optimized version of the user's query tuned for use with Google's API search engine.
+QUERY_OPTIMIZER_SYSTEM = """Optimize queries for Google Search API. Remove filler words, fix spelling, extract key terms.
 
-Example JSON Response: {"query": "optimized search terms"}
+Example JSON Response:
+{"query": "optimized search terms"}
 
 Return ONLY a valid JSON object and nothing else."""
 

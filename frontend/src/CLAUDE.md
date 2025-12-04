@@ -14,3 +14,6 @@ Source root containing Next.js app, React components, custom hooks, state stores
 
 ## Dependencies/Relations
 Entry point for frontend. Used by `frontend/` Next.js runtime.
+
+## Rules
+- **CSS**: You MUST create a dedicated CSS file for EVERY TSX script instead of using inline CSS.

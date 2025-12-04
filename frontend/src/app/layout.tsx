@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/theme";
 import "@/styles/index.css";
 
 const geistSans = Geist({
@@ -18,18 +19,44 @@ export const metadata: Metadata = {
   description: "Multimodal vision chat with Qwen3-VL-30B-A3B",
 };
 
+// Inline script to prevent flash of wrong theme (runs before React hydrates)
+const themeInitScript = `
+(function() {
+  try {
+    const stored = localStorage.getItem('theme-storage');
+    let theme = 'system';
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      theme = parsed.state?.theme || 'system';
+    }
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = theme === 'dark' || (theme === 'system' && prefersDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <Toaster position="top-center" theme="dark" />
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -46,7 +46,12 @@ async def proxy_image(request: ImageProxyRequest):
             timeout=FETCH_TIMEOUT,
             follow_redirects=True,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0",
+                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Sec-Fetch-Dest": "image",
+                "Sec-Fetch-Mode": "no-cors",
+                "Sec-Fetch-Site": "cross-site",
             },
         ) as client:
             response = await client.get(url)
@@ -75,13 +80,22 @@ async def proxy_image(request: ImageProxyRequest):
             detail={"error": {"code": "FETCH_TIMEOUT", "message": "Image fetch timed out"}},
         )
     except httpx.HTTPStatusError as e:
-        logger.warning(f"HTTP error fetching image {url}: {e.response.status_code}")
+        upstream_status = e.response.status_code
+        logger.warning(f"HTTP error fetching image {url}: {upstream_status}")
+        # Map upstream status to appropriate proxy response
+        if 400 <= upstream_status < 500:
+            # Client errors (403 Forbidden, 404 Not Found, etc.) - return 403 to indicate access denied
+            proxy_status = status.HTTP_403_FORBIDDEN
+        else:
+            # Server errors - return 502 Bad Gateway
+            proxy_status = status.HTTP_502_BAD_GATEWAY
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=proxy_status,
             detail={
                 "error": {
                     "code": "FETCH_FAILED",
-                    "message": f"Failed to fetch image: HTTP {e.response.status_code}",
+                    "message": f"Failed to fetch image: HTTP {upstream_status}",
+                    "upstream_status_code": upstream_status,
                 }
             },
         )

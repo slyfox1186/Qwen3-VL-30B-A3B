@@ -96,3 +96,7 @@ Key settings (see `backend/app/config.py`):
 - **TypeScript**: `frontend/tsconfig.json` with strict mode
 - **ESLint**: `frontend/eslint.config.mjs` with Next.js config
 - **Ruff**: `backend/ruff.toml` - Python 3.11, line-length 100, rules E/F/I/N/W/UP
+
+## Rules
+
+- **CSS**: You MUST create a dedicated CSS file for EVERY TSX script instead of using inline CSS.

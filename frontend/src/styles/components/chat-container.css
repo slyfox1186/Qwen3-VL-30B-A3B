@@ -1,5 +1,5 @@
 .app-layout {
-  @apply flex h-screen w-full bg-zinc-50/50 dark:bg-zinc-950 overflow-hidden;
+  @apply flex h-screen w-full bg-background overflow-hidden;
 }
 
 .main-wrapper {
@@ -42,6 +42,10 @@
   @apply bg-yellow-500;
 }
 
+.status-dot.error {
+  @apply bg-destructive;
+}
+
 .status-text {
   @apply text-xs font-mono text-muted-foreground;
 }
@@ -72,4 +76,57 @@
 
 .input-area-wrapper {
   @apply shrink-0 z-20;
+}
+
+/* Shortcuts Overlay */
+.shortcuts-backdrop {
+  @apply fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4;
+}
+
+.shortcuts-modal {
+  @apply w-full max-w-md bg-card border border-border rounded-xl shadow-2xl p-6;
+  animation: shortcuts-enter 200ms ease-out;
+}
+
+@keyframes shortcuts-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.shortcuts-header {
+  @apply flex items-center justify-between mb-6;
+}
+
+.shortcuts-title {
+  @apply text-lg font-semibold text-card-foreground;
+}
+
+.shortcuts-close-btn {
+  @apply text-muted-foreground hover:text-foreground transition-colors;
+}
+
+.shortcuts-grid {
+  @apply grid gap-4;
+}
+
+.shortcut-item {
+  @apply flex items-center justify-between text-sm;
+}
+
+.shortcut-desc {
+  @apply text-muted-foreground;
+}
+
+.shortcut-keys {
+  @apply flex items-center gap-1;
+}
+
+.kbd {
+  @apply pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100;
 }

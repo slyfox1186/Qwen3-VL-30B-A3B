@@ -16,12 +16,12 @@ from app.dependencies import (
     validate_session,
 )
 from app.models.domain.message import Message
-from app.models.schemas.chat import ChatRequest, ChatResponse
+from app.models.schemas.chat import ChatRequest, ChatResponse, RegenerateRequest
 from app.services.image.converter import ImageConverter
 from app.services.image.processor import ImageValidationError
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
-from app.services.llm.streaming import SSEStreamHandler, StreamResult, parse_thinking_from_text
+from app.services.llm.streaming import SSEStreamHandler, StreamResult
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
 
@@ -81,12 +81,10 @@ async def chat_stream(
 
     The response is a text/event-stream with the following events:
     - start: Stream initialized
-    - thinking_start: Model started reasoning
-    - thinking_delta: Reasoning content chunk
-    - thinking_end: Reasoning complete
     - content_start: Main response started
     - content_delta: Response content chunk
     - content_end: Response complete
+    - images: Image search results (when tool is used)
     - done: Stream finished
     - error: Error occurred
     """
@@ -145,16 +143,18 @@ async def chat_stream(
     async def generate():
         """Generate SSE events from LLM stream."""
         try:
-            # Get token stream from LLM with tool support
+            # Get token stream from LLM
+            # Disable tools when image is attached - forces LLM to describe the image
+            # instead of being tempted to call search_images
             token_generator = llm_client.chat_completion_stream(
                 messages=llm_messages,
                 max_tokens=request.max_tokens or settings.vllm_max_tokens,
                 temperature=request.temperature or 0.7,
-                tools=TOOLS,
-                tool_choice="auto",
+                tools=None if has_image else TOOLS,
+                tool_choice=None if has_image else "auto",
             )
 
-            # Stream with thinking tag parsing, capturing result
+            # Stream response, capturing result
             async for sse_chunk in SSEStreamHandler.stream_response(
                 token_generator, request_id, result_holder
             ):
@@ -166,7 +166,6 @@ async def chat_stream(
                 assistant_message = Message(
                     role="assistant",
                     content=stream_result.content,
-                    thinking=stream_result.thinking or None,
                     search_results=stream_result.search_results,
                     search_query=stream_result.search_query,
                     session_id=session_id,
@@ -264,14 +263,10 @@ async def chat_sync(
             temperature=request.temperature or 0.7,
         )
 
-        # Parse thinking from response
-        thinking, content = parse_thinking_from_text(result["content"])
-
         # Create and save assistant message
         assistant_message = Message(
             role="assistant",
-            content=content,
-            thinking=thinking,
+            content=result["content"],
             session_id=session_id,
         )
         await history_service.append_message(
@@ -286,8 +281,7 @@ async def chat_sync(
         return ChatResponse(
             request_id=request_id,
             session_id=session_id,
-            content=content,
-            thinking=thinking,
+            content=result["content"],
             usage={
                 "prompt_tokens": result["usage"]["prompt_tokens"],
                 "completion_tokens": result["usage"]["completion_tokens"],
@@ -305,3 +299,110 @@ async def chat_sync(
                 }
             },
         )
+
+
+@router.post("/regenerate")
+async def regenerate_response(
+    request: RegenerateRequest,
+    session_id: Annotated[str, Depends(validate_session)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    llm_client: Annotated[VLLMClient, Depends(get_llm_client)],
+):
+    """
+    Regenerate an AI response.
+
+    Removes the specified AI message and generates a new response
+    based on the preceding conversation context.
+    """
+    settings = get_settings()
+    request_id = str(uuid.uuid4())
+
+    # Get current history
+    messages = await history_service.get_history(session_id)
+
+    # Find the AI message to regenerate
+    ai_index = None
+    for i, msg in enumerate(messages):
+        if msg.id == request.message_id:
+            ai_index = i
+            break
+
+    if ai_index is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": {"code": "MESSAGE_NOT_FOUND", "message": "Message not found"}},
+        )
+
+    if messages[ai_index].role != "assistant":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "INVALID_MESSAGE", "message": "Can only regenerate assistant messages"}},
+        )
+
+    if ai_index == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": {"code": "NO_CONTEXT", "message": "No preceding user message found"}},
+        )
+
+    # Truncate at the AI message (removes it, keeps user message before it)
+    await history_service.truncate_at_message(
+        session_id,
+        request.message_id,
+        settings.session_ttl_seconds,
+    )
+
+    # Get updated history for LLM context
+    history = await history_service.get_context_messages(session_id)
+    llm_messages = MessageBuilder.build_messages(history)
+
+    # Holder to capture streaming result
+    result_holder: list[StreamResult] = []
+
+    async def generate():
+        """Generate SSE events from LLM stream."""
+        try:
+            token_generator = llm_client.chat_completion_stream(
+                messages=llm_messages,
+                max_tokens=settings.vllm_max_tokens,
+                temperature=0.7,
+                tools=TOOLS,
+                tool_choice="auto",
+            )
+
+            async for sse_chunk in SSEStreamHandler.stream_response(
+                token_generator, request_id, result_holder
+            ):
+                yield sse_chunk
+
+            # Save new assistant message
+            if result_holder:
+                stream_result = result_holder[0]
+                assistant_message = Message(
+                    role="assistant",
+                    content=stream_result.content,
+                    search_results=stream_result.search_results,
+                    search_query=stream_result.search_query,
+                    session_id=session_id,
+                )
+                await history_service.append_message(
+                    session_id,
+                    assistant_message,
+                    settings.session_ttl_seconds,
+                )
+                await session_manager.increment_message_count(session_id, 1)
+
+        except Exception as e:
+            logger.error(f"Regenerate stream error: {e}")
+            yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': str(e), 'code': 'LLM_ERROR'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Request-ID": request_id,
+        },
+    )

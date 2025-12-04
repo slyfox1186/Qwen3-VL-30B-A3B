@@ -14,6 +14,22 @@
   @apply border-border;
 }
 
+.chat-input-wrapper.listening {
+  @apply border-red-500/50 ring-2 ring-red-500/20 bg-red-50/10;
+}
+
+.suggestions-container {
+  @apply flex flex-wrap justify-center gap-2 mb-4 max-w-2xl mx-auto px-4;
+}
+
+.suggestion-chip {
+  @apply flex items-center px-3 py-1.5 rounded-full bg-background/80 border border-border shadow-sm text-xs font-medium text-muted-foreground hover:text-primary hover:bg-primary/5 hover:border-primary/30 transition-all;
+}
+
+.voice-button {
+  @apply shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl h-10 w-10 transition-all;
+}
+
 .drag-overlay {
   @apply absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm;
 }
@@ -40,7 +56,7 @@
 }
 
 .image-preview-remove {
-  @apply absolute -top-1.5 -right-1.5 bg-destructive text-white rounded-full p-0.5 shadow-md opacity-0 transition-all hover:scale-110;
+  @apply absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 shadow-md transition-all hover:scale-110 z-10;
 }
 
 .chat-input-controls {
