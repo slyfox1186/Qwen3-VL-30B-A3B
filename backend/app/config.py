@@ -25,8 +25,14 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://localhost:8000/v1"
     vllm_api_key: str = "EMPTY"
     vllm_model: str = "Qwen3-VL-30B-A3B-Instruct-AWQ-4bit"
-    vllm_max_tokens: int = 2048
+    vllm_max_model_len: int = 26000
     vllm_timeout: float = 120.0
+
+    @property
+    def vllm_max_tokens(self) -> int:
+        """Max tokens for completion, derived from model context length."""
+        # Reserve ~40% of context for prompt, use ~60% for completion
+        return int(self.vllm_max_model_len * 0.6)
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -65,12 +71,27 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     enable_structured_logging: bool = True
 
-    # Embeddings / Vector Search
+    # Embeddings / Vector Search (session-scoped)
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dimension: int = 384
     embedding_batch_size: int = 32
     vector_search_top_k: int = 10
     enable_vector_search: bool = True
+
+    # PostgreSQL (Long-term Memory)
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_user: str = "slyfox1186"
+    postgres_password: str = "1812"
+    postgres_database: str = "qwen3"
+    postgres_pool_min: int = 5
+    postgres_pool_max: int = 20
+
+    # Memory Embedding (cross-conversation)
+    memory_embedding_model: str = "google/embeddinggemma-300m-qat-q8_0-unquantized"
+    memory_embedding_dimension: int = 768
+    memory_search_top_k: int = 5
+    memory_search_min_score: float = 0.5
 
     @property
     def cors_origins_list(self) -> list[str]:

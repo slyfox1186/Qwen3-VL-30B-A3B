@@ -1,7 +1,7 @@
 /* ThinkingBubble component styles */
 
 .thinking-bubble-container {
-  @apply mb-6 w-full;
+  @apply mb-6 w-full self-stretch;
 }
 
 .thinking-toggle-button {
@@ -32,5 +32,10 @@
 
 .thinking-content {
   @apply mt-2 px-4 py-3 text-sm text-muted-foreground
-         border border-border/30 bg-muted/10 rounded-lg shadow-inner;
+         border border-border/30 bg-muted/10 rounded-lg shadow-inner relative;
+}
+
+/* Copy button in top-right of thinking bubble content */
+.thinking-copy-button {
+  @apply absolute top-2 right-2;
 }

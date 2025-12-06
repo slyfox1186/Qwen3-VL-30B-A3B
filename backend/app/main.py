@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.middleware.error_handler import setup_exception_handlers
 from app.middleware.observability import get_logger, setup_observability
 from app.middleware.request_id import RequestIDMiddleware
+from app.postgres.client import PostgresClient
 from app.redis.client import RedisClient
 
 settings = get_settings()
@@ -29,11 +30,17 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis_client
     logger.info("Redis initialized")
 
+    # Initialize PostgreSQL (Long-term Memory)
+    postgres_client = await PostgresClient.get_instance()
+    app.state.postgres = postgres_client
+    logger.info("PostgreSQL initialized")
+
     yield
 
     # Shutdown
     logger.info("Shutting down...")
     await redis_client.disconnect()
+    await postgres_client.disconnect()
     logger.info("Shutdown complete")
 
 

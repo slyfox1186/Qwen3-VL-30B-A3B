@@ -54,10 +54,10 @@ class FunctionRegistry:
         self._load_builtins()
 
     def _load_builtins(self):
-        """Load built-in functions."""
-        from app.services.functions.builtins import get_builtin_functions
+        """Load built-in functions including memory tools."""
+        from app.services.functions.builtins import get_all_builtin_functions
 
-        for func_def in get_builtin_functions():
+        for func_def in get_all_builtin_functions():
             self.register(func_def)
 
     def register(self, func_def: FunctionDefinition) -> None:

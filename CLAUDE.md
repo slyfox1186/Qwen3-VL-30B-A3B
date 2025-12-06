@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Qwen3-VL Chat Application - A vision-language model chat interface using Qwen3-VL-30B-A3B with a FastAPI backend and Next.js frontend.
 
+## Python Environment
+
+**CRITICAL**: Always activate the `qwen` conda environment before running any Python commands:
+
+```bash
+source ~/miniconda3/etc/profile.d/conda.sh && conda activate qwen
+```
+
+All backend Python commands (run.py, run_linter.py, pip, etc.) require this environment.
+
 ## Commands
 
 ### Run Full Stack (requires user permission)

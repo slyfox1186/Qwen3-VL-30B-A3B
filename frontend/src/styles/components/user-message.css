@@ -107,13 +107,23 @@
   @apply bg-gradient-to-b from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900;
 }
 
-/* Message Actions (Copy & Edit buttons) */
-.user-message-actions {
-  @apply absolute right-full top-1/2 -translate-y-1/2 mr-3 flex items-center gap-1 opacity-0 transition-opacity duration-200;
+/* Bubble wrapper for positioning */
+.user-bubble-wrapper {
+  @apply relative;
 }
 
+/* Copy button in top-right of user bubble */
+.user-copy-button {
+  @apply absolute top-2 right-2;
+}
+
+/* Edit button in top-right, next to copy */
 .user-edit-button {
-  @apply h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted;
+  @apply absolute top-2 right-10 h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 transition-opacity duration-200;
+}
+
+.group:hover .user-edit-button {
+  @apply opacity-100;
 }
 
 /* Edit Mode Container */

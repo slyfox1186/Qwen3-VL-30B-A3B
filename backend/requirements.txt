@@ -15,6 +15,9 @@ redis>=5.0.0
 # OpenAI Client (for vLLM)
 openai>=1.10.0
 
+# Token Counting
+tiktoken>=0.7.0
+
 # SSE Streaming
 sse-starlette>=2.0.0
 
@@ -41,6 +44,10 @@ sentry-sdk[fastapi]>=1.40.0
 # Vector Search (optional - for semantic search)
 numpy>=1.26.0
 sentence-transformers>=2.3.0
+
+# PostgreSQL (Long-term Memory)
+asyncpg>=0.29.0
+pgvector>=0.3.0
 
 # Document Processing (optional - for multi-modal)
 pypdf>=4.0.0

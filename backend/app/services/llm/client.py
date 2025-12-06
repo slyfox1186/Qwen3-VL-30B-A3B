@@ -76,11 +76,21 @@ class VLLMClient:
             logger.info(f"Sending to vLLM with extra_body: {kwargs.get('extra_body')}")
             stream = await self._client.chat.completions.create(**kwargs)
 
+            chunk_count = 0
+
             async for chunk in stream:
                 if not chunk.choices:
                     continue
 
                 delta = chunk.choices[0].delta
+                chunk_count += 1
+
+                # Debug: log first 5 and around chunk 10-15 to catch transition
+                if chunk_count <= 5 or (10 <= chunk_count <= 15):
+                    logger.warning(
+                        f"CHUNK #{chunk_count}: content={delta.content!r}, "
+                        f"reasoning={getattr(delta, 'reasoning_content', None)!r}"
+                    )
 
                 # Yield reasoning/thinking tokens (vLLM with --reasoning-parser)
                 # The reasoning_content field is used when reasoning parser is enabled

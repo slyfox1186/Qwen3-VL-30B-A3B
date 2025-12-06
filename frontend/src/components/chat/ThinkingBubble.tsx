@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronDown, BrainCircuit } from 'lucide-react';
 import MarkdownItRenderer from './MarkdownItRenderer';
+import { CopyButton } from '@/components/ui/CopyButton';
 
 interface ThinkingBubbleProps {
   content: string;
@@ -16,7 +17,7 @@ export const ThinkingBubble: React.FC<ThinkingBubbleProps> = ({ content, isCompl
   if (!content) return null;
 
   return (
-    <div className="thinking-bubble-container">
+    <div className="thinking-bubble-container group">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="thinking-toggle-button"
@@ -45,6 +46,10 @@ export const ThinkingBubble: React.FC<ThinkingBubbleProps> = ({ content, isCompl
           >
             <div className="thinking-content">
               <MarkdownItRenderer content={content} />
+              <CopyButton
+                text={content}
+                className="thinking-copy-button"
+              />
             </div>
           </motion.div>
         )}

@@ -9,11 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
-from app.api.v1.chat import (
-    TOOLS,
-    build_current_user_message,
-    get_system_prompt,
-)
+from app.api.v1.chat import build_current_user_message
 from app.config import get_settings
 from app.dependencies import (
     get_history_service_ws,
@@ -21,15 +17,22 @@ from app.dependencies import (
     get_session_manager_ws,
 )
 from app.models.domain.message import Message
+from app.services.functions.executor import FunctionExecutor
+from app.services.functions.registry import get_function_registry
 from app.services.image.converter import ImageConverter
 from app.services.image.processor import ImageValidationError
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
+from app.services.llm.prompts import get_system_prompt
+from app.services.llm.token_utils import calculate_max_tokens
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ws")
+
+# Maximum number of tool call iterations to prevent infinite loops
+MAX_TOOL_ITERATIONS = 10
 
 
 class WebSocketChatHandler:
@@ -55,6 +58,7 @@ class WebSocketChatHandler:
         self.llm_client = llm_client
         self.settings = get_settings()
         self.converter = ImageConverter()
+        self.function_executor = FunctionExecutor(registry=get_function_registry())
 
         # Cancellation control
         self._cancelled = asyncio.Event()
@@ -176,7 +180,7 @@ class WebSocketChatHandler:
         )
 
         conversation_has_images = has_image or history_had_images
-        llm_messages = [{"role": "system", "content": get_system_prompt(conversation_has_images)}]
+        llm_messages = [{"role": "system", "content": get_system_prompt(has_images=conversation_has_images)}]
         llm_messages.extend(MessageBuilder.build_messages(history_without_current))
         llm_messages.append(
             build_current_user_message(content, image_urls, history_had_images)
@@ -208,133 +212,295 @@ class WebSocketChatHandler:
         temperature: float,
         conversation_has_images: bool,
     ) -> None:
-        """Stream LLM response with progress updates."""
+        """Stream LLM response with progress updates and tool call handling."""
         await self.send_event("start", {"request_id": request_id})
 
         token_count = 0
         start_time = asyncio.get_event_loop().time()
         progress_interval = 50  # Send progress every N tokens
 
-        try:
-            token_generator = self.llm_client.chat_completion_stream(
-                messages=llm_messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                tools=None if conversation_has_images else TOOLS,
-                tool_choice=None if conversation_has_images else "auto",
-            )
+        # Get tools from function registry (includes memory tools)
+        registry = get_function_registry()
+        tools = registry.get_openai_tools() if not conversation_has_images else None
 
-            # Wrap generator with progress tracking
-            async def tracked_generator():
-                nonlocal token_count
+        # Track overall state across tool iterations
+        final_content_buffer = ""
+        final_thought_buffer = ""
+        global_thought_started = False  # Only send thought_start once
+        global_content_started = False  # Only send content_start once
+
+        try:
+            # Tool call loop - model may call tools multiple times
+            iteration = 0
+            while iteration < MAX_TOOL_ITERATIONS:
+                iteration += 1
+
+                # Calculate safe max_tokens based on current prompt size
+                safe_max_tokens = calculate_max_tokens(
+                    messages=llm_messages,
+                    tools=tools,
+                    requested_max_tokens=max_tokens,
+                )
+                logger.info(
+                    f"[{request_id}] Iteration {iteration}: "
+                    f"requested_max={max_tokens}, safe_max={safe_max_tokens}"
+                )
+
+                token_generator = self.llm_client.chat_completion_stream(
+                    messages=llm_messages,
+                    max_tokens=safe_max_tokens,
+                    temperature=temperature,
+                    tools=tools,
+                    tool_choice="auto" if tools else None,
+                )
+
+                # Buffers for this iteration
+                content_buffer = ""
+                thought_buffer = ""
+                thought_ended = False
+                received_reasoning = False  # Track if we got reasoning chunks from vLLM
+                tag_buffer = ""
+
+                # Tool call accumulation
+                tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+                has_tool_calls = False
+
+                # Only expect thinking on first iteration
+                # After tool calls, model responds directly without new thinking
+                if iteration == 1:
+                    in_think_tag = True  # Assume we start inside <think>
+                    if not global_thought_started:
+                        await self.send_event("thought_start", {})
+                        global_thought_started = True
+                else:
+                    in_think_tag = False  # Post-tool responses go straight to content
+
                 async for chunk in token_generator:
                     # Check for cancellation
                     if self._cancelled.is_set():
                         logger.info(f"[{request_id}] Cancellation detected during streaming")
                         break
 
-                    if chunk.get("type") == "content":
-                        token_count += 1
+                    chunk_type = chunk.get("type")
+                    chunk_content = chunk.get("content", "")
 
-                        # Send progress update periodically
+                    # Handle tool calls
+                    if chunk_type == "tool_call":
+                        has_tool_calls = True
+                        tc = chunk.get("tool_call", {})
+                        idx = tc.get("index", 0)
+
+                        if idx not in tool_calls:
+                            tool_calls[idx] = {
+                                "id": tc.get("id"),
+                                "name": None,
+                                "arguments": "",
+                            }
+
+                        func_data = tc.get("function", {})
+                        if func_data.get("name"):
+                            tool_calls[idx]["name"] = func_data["name"]
+                        if func_data.get("arguments"):
+                            tool_calls[idx]["arguments"] += func_data["arguments"]
+
+                        continue
+
+                    # Track token count for progress
+                    if chunk_type == "content":
+                        token_count += 1
                         if token_count % progress_interval == 0:
                             elapsed = asyncio.get_event_loop().time() - start_time
                             tokens_per_sec = token_count / elapsed if elapsed > 0 else 0
                             remaining_tokens = max_tokens - token_count
-                            eta_seconds = remaining_tokens / tokens_per_sec if tokens_per_sec > 0 else 0
-
+                            eta = remaining_tokens / tokens_per_sec if tokens_per_sec > 0 else 0
                             await self.send_event("progress", {
                                 "tokens_generated": token_count,
                                 "max_tokens": max_tokens,
                                 "tokens_per_second": round(tokens_per_sec, 1),
-                                "eta_seconds": round(eta_seconds, 1),
+                                "eta_seconds": round(eta, 1),
                                 "percentage": round((token_count / max_tokens) * 100, 1),
                             })
 
-                    yield chunk
+                    # Handle reasoning content from vLLM --reasoning-parser
+                    if chunk_type == "reasoning":
+                        reasoning = chunk_content
+                        if reasoning:
+                            received_reasoning = True
+                            if not global_thought_started:
+                                await self.send_event("thought_start", {})
+                                global_thought_started = True
+                            thought_buffer += reasoning
+                            await self.send_event("thought_delta", {"content": reasoning})
 
-            # Use SSEStreamHandler but send via WebSocket
-            content_buffer = ""
-            thought_buffer = ""
-            in_thought = False
-            stream_buffer = ""
-            start_tag = "<think>"
-            end_tag = "</think>"
-            content_started = False
-
-            async for chunk in tracked_generator():
-                chunk_type = chunk.get("type")
-
-                if chunk_type == "content":
-                    token = chunk.get("content", "")
-                    if token:
-                        stream_buffer += token
-
-                        # Process buffer for tags (same logic as SSEStreamHandler)
-                        while stream_buffer:
-                            if in_thought:
-                                end_idx = stream_buffer.find(end_tag)
-                                if end_idx != -1:
-                                    thought_chunk = stream_buffer[:end_idx]
-                                    if thought_chunk:
-                                        thought_buffer += thought_chunk
-                                        await self.send_event("thought_delta", {"content": thought_chunk})
+                    elif chunk_type == "content":
+                        token = chunk.get("content", "")
+                        if token:
+                            # If we received reasoning chunks, vLLM handles think tags for us
+                            # All content chunks go straight to content output
+                            if received_reasoning:
+                                # End thinking if not already ended
+                                if global_thought_started and not thought_ended:
                                     await self.send_event("thought_end", {})
-                                    in_thought = False
-                                    stream_buffer = stream_buffer[end_idx + len(end_tag):]
-                                else:
-                                    safe_len = len(stream_buffer) - (len(end_tag) - 1)
-                                    if safe_len > 0:
-                                        chunk_to_send = stream_buffer[:safe_len]
-                                        thought_buffer += chunk_to_send
-                                        await self.send_event("thought_delta", {"content": chunk_to_send})
-                                        stream_buffer = stream_buffer[safe_len:]
-                                    break
+                                    thought_ended = True
+                                # Send content directly
+                                if not global_content_started:
+                                    await self.send_event("content_start", {})
+                                    global_content_started = True
+                                content_buffer += token
+                                await self.send_event("content_delta", {"content": token})
+                                continue
+
+                            # Fast path: check for </think> tag in token (vLLM strips <think> but keeps </think>)
+                            # Accumulate in tag_buffer to handle tag split across tokens
+                            tag_buffer += token
+
+                            # Check if </think> is in the accumulated buffer
+                            close_tag = "</think>"
+                            close_idx = tag_buffer.lower().find(close_tag)
+
+                            if close_idx != -1:
+                                # Found </think> - split into thought and content
+                                thought_part = tag_buffer[:close_idx]
+                                content_part = tag_buffer[close_idx + len(close_tag):]
+
+                                # Send thought part
+                                if thought_part:
+                                    thought_buffer += thought_part
+                                    await self.send_event("thought_delta", {"content": thought_part})
+
+                                # End thinking
+                                if global_thought_started and not thought_ended:
+                                    await self.send_event("thought_end", {})
+                                    thought_ended = True
+                                in_think_tag = False
+
+                                # Send content part
+                                if content_part:
+                                    if not global_content_started:
+                                        await self.send_event("content_start", {})
+                                        global_content_started = True
+                                    content_buffer += content_part
+                                    await self.send_event("content_delta", {"content": content_part})
+
+                                tag_buffer = ""
+                            elif in_think_tag:
+                                # Still in thinking, check if we might have partial </think> at end
+                                # Keep last 8 chars in buffer in case tag spans tokens
+                                if len(tag_buffer) > 8:
+                                    to_send = tag_buffer[:-8]
+                                    tag_buffer = tag_buffer[-8:]
+                                    thought_buffer += to_send
+                                    await self.send_event("thought_delta", {"content": to_send})
                             else:
-                                start_idx = stream_buffer.find(start_tag)
-                                if start_idx != -1:
-                                    content_chunk = stream_buffer[:start_idx]
-                                    if content_chunk:
-                                        content_buffer += content_chunk
-                                        if not content_started:
-                                            await self.send_event("content_start", {})
-                                            content_started = True
-                                        await self.send_event("content_delta", {"content": content_chunk})
-                                    await self.send_event("thought_start", {})
-                                    in_thought = True
-                                    stream_buffer = stream_buffer[start_idx + len(start_tag):]
-                                else:
-                                    safe_len = len(stream_buffer) - (len(start_tag) - 1)
-                                    if safe_len > 0:
-                                        chunk_to_send = stream_buffer[:safe_len]
-                                        content_buffer += chunk_to_send
-                                        if not content_started:
-                                            await self.send_event("content_start", {})
-                                            content_started = True
-                                        await self.send_event("content_delta", {"content": chunk_to_send})
-                                        stream_buffer = stream_buffer[safe_len:]
-                                    break
+                                # Already past thinking, send all as content
+                                if not global_content_started:
+                                    await self.send_event("content_start", {})
+                                    global_content_started = True
+                                content_buffer += tag_buffer
+                                await self.send_event("content_delta", {"content": tag_buffer})
+                                tag_buffer = ""
 
-            # Flush remaining buffer
-            if stream_buffer:
-                if in_thought:
-                    thought_buffer += stream_buffer
-                    await self.send_event("thought_delta", {"content": stream_buffer})
-                else:
-                    content_buffer += stream_buffer
-                    if not content_started:
-                        await self.send_event("content_start", {})
-                        content_started = True
-                    await self.send_event("content_delta", {"content": stream_buffer})
+                # Flush remaining tag buffer at end of stream
+                if tag_buffer:
+                    if in_think_tag:
+                        thought_buffer += tag_buffer
+                        await self.send_event("thought_delta", {"content": tag_buffer})
+                    else:
+                        if not global_content_started:
+                            await self.send_event("content_start", {})
+                            global_content_started = True
+                        content_buffer += tag_buffer
+                        await self.send_event("content_delta", {"content": tag_buffer})
 
-            if content_started:
+                # End thinking if still open (only on iteration 1 when we expected thinking)
+                if in_think_tag and global_thought_started and not thought_ended:
+                    await self.send_event("thought_end", {})
+                    thought_ended = True
+
+                # Accumulate buffers
+                final_thought_buffer += thought_buffer
+                final_content_buffer += content_buffer
+
+                # Process tool calls if any
+                if has_tool_calls and tool_calls:
+                    logger.info(f"[{request_id}] Processing {len(tool_calls)} tool calls")
+
+                    # Build assistant message with tool calls for context
+                    assistant_tool_msg: dict[str, Any] = {"role": "assistant", "content": None}
+                    tool_call_list = []
+                    for idx in sorted(tool_calls.keys()):
+                        tc = tool_calls[idx]
+                        if tc["name"] and tc["id"]:
+                            tool_call_list.append({
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": tc["arguments"],
+                                },
+                            })
+                    assistant_tool_msg["tool_calls"] = tool_call_list
+                    llm_messages.append(assistant_tool_msg)
+
+                    # Execute each tool and add results
+                    for tc_entry in tool_call_list:
+                        func_name = tc_entry["function"]["name"]
+                        func_args_str = tc_entry["function"]["arguments"]
+                        tc_id = tc_entry["id"]
+
+                        try:
+                            func_args = json.loads(func_args_str) if func_args_str else {}
+                        except json.JSONDecodeError:
+                            func_args = {}
+                            logger.warning(
+                                f"[{request_id}] Failed to parse tool args: {func_args_str}"
+                            )
+
+                        logger.info(f"[{request_id}] Executing tool: {func_name}({func_args})")
+
+                        # Execute the function
+                        result = await self.function_executor.execute(func_name, func_args)
+
+                        # Format result for LLM
+                        if result.success:
+                            result_content = json.dumps(result.result, default=str)
+                        else:
+                            result_content = json.dumps({"error": result.error})
+
+                        # Add tool result message
+                        llm_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": result_content,
+                        })
+
+                        logger.info(
+                            f"[{request_id}] Tool {func_name} result: "
+                            f"success={result.success}, time={result.execution_time_ms:.1f}ms"
+                        )
+
+                    # Continue loop to get model's response to tool results
+                    continue
+
+                # No tool calls - we're done
+                break
+
+            # End content if started
+            if global_content_started:
                 await self.send_event("content_end", {})
+
+            # Log final state
+            logger.info(
+                f"[{request_id}] === STREAM COMPLETE ===\n"
+                f"  iterations={iteration}, thought_len={len(final_thought_buffer)}, "
+                f"content_len={len(final_content_buffer)}"
+            )
 
             # Save assistant message
             assistant_message = Message(
                 role="assistant",
-                content=content_buffer,
-                thought=thought_buffer if thought_buffer else None,
+                content=final_content_buffer,
+                thought=final_thought_buffer if final_thought_buffer else None,
                 session_id=session_id,
             )
             await self.history_service.append_message(
@@ -355,11 +521,10 @@ class WebSocketChatHandler:
             })
 
         except asyncio.CancelledError:
-            # Send partial result on cancellation
             await self.send_event("cancelled", {
                 "request_id": request_id,
                 "tokens_generated": token_count,
-                "partial_content": content_buffer[:500] if content_buffer else None,
+                "partial_content": final_content_buffer[:500] if final_content_buffer else None,
             })
             raise
 

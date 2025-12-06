@@ -10,23 +10,9 @@ import logging
 from typing import Any
 
 from app.models.domain.message import Message
+from app.services.llm.prompts import SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_PROMPT
 
 logger = logging.getLogger(__name__)
-
-
-# Prompt template for summarization
-SUMMARIZE_PROMPT = """Summarize this conversation concisely, preserving:
-1. Key topics discussed
-2. Important decisions or conclusions
-3. Any unresolved questions
-4. User preferences or requirements mentioned
-
-Be concise but complete. Focus on information that would help continue the conversation.
-
-CONVERSATION:
-{conversation}
-
-SUMMARY:"""
 
 
 class ConversationSummarizer:
@@ -100,11 +86,11 @@ class ConversationSummarizer:
         return [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that creates concise conversation summaries.",
+                "content": SUMMARIZE_SYSTEM_PROMPT,
             },
             {
                 "role": "user",
-                "content": SUMMARIZE_PROMPT.format(conversation=conversation_text),
+                "content": SUMMARIZE_USER_PROMPT.format(conversation=conversation_text),
             },
         ]
 

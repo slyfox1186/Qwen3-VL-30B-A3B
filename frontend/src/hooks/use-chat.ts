@@ -1,11 +1,26 @@
-import { useCallback, useRef } from 'react';
+/**
+ * Chat hook with WebSocket bidirectional streaming.
+ *
+ * Features:
+ * - Real-time bidirectional communication
+ * - Cancellation support
+ * - Progress tracking with token counts and ETA
+ */
+
+import { useCallback, useRef, useEffect } from 'react';
 import { useChatStore } from '@/stores/chat-store';
 import { useSessionStore } from '@/stores/session-store';
-import { Message, SSEEvent, SearchResult } from '@/types/api';
+import { Message, SearchResult } from '@/types/api';
 import { v4 as uuidv4 } from 'uuid';
 import { generateTitleFromMessage } from '@/lib/title-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
+
+interface WebSocketMessage {
+  type: string;
+  [key: string]: unknown;
+}
 
 export function useChat() {
   const {
@@ -26,6 +41,10 @@ export function useChat() {
     editingMessageId,
     setEditingMessageId,
     removeMessagesFrom,
+    setStreamProgress,
+    setCancelling,
+    streamProgress,
+    isCancelling,
   } = useChatStore();
 
   const clearMessages = useCallback(() => {
@@ -33,23 +52,74 @@ export function useChat() {
   }, [setMessages]);
 
   const { session, createSession, updateSessionTitle, generateLLMTitle } = useSessionStore();
-  const abortControllerRef = useRef<AbortController | null>(null);
-  // Atomic lock to prevent concurrent sendMessage calls (ref survives re-renders)
+
+  // WebSocket reference
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const requestInProgressRef = useRef(false);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    const ws = wsRef.current;
+    const timeout = reconnectTimeoutRef.current;
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    };
+  }, []);
+
+  const connectWebSocket = useCallback((): Promise<WebSocket> => {
+    return new Promise((resolve, reject) => {
+      // Close existing connection
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        resolve(wsRef.current);
+        return;
+      }
+
+      const ws = new WebSocket(`${WS_BASE_URL}/ws/chat`);
+
+      ws.onopen = () => {
+        console.log('[WebSocket] Connected');
+        wsRef.current = ws;
+        resolve(ws);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[WebSocket] Error:', error);
+        reject(error);
+      };
+
+      ws.onclose = (event) => {
+        console.log('[WebSocket] Closed:', event.code, event.reason);
+        wsRef.current = null;
+      };
+    });
+  }, []);
 
   const loadHistory = useCallback(async (sessionId: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/history`);
       if (!res.ok) {
         if (res.status === 404) {
-          // Session expired, clear it
           setMessages([]);
           return false;
         }
         throw new Error('Failed to load history');
       }
       const data = await res.json();
-      const historyMessages: Message[] = data.messages.map((msg: { id: string; role: string; content: string; thought?: string; created_at: string; search_results?: SearchResult[]; search_query?: string }) => ({
+      const historyMessages: Message[] = data.messages.map((msg: {
+        id: string;
+        role: string;
+        content: string;
+        thought?: string;
+        created_at: string;
+        search_results?: SearchResult[];
+        search_query?: string;
+      }) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,
@@ -69,16 +139,12 @@ export function useChat() {
   const sendMessage = useCallback(async (content: string, images: string[] = []) => {
     console.log('[sendMessage] Called with:', { content: content.slice(0, 30), imagesCount: images.length });
 
-    // Atomic lock using ref - prevents TOCTOU race condition
-    // Refs are synchronous and don't cause re-renders, making this truly atomic
     if (requestInProgressRef.current) {
       console.warn('[sendMessage] BLOCKED: request already in progress');
       return;
     }
     requestInProgressRef.current = true;
-    console.log('[sendMessage] Lock acquired');
 
-    // Also set streaming for UI state
     setStreaming(true);
     setChatError(null);
 
@@ -94,7 +160,6 @@ export function useChat() {
       }
     }
 
-    // Check if this is the first message (for auto-titling)
     const isFirstMessage = currentSession.message_count === 0 && messages.length === 0;
 
     // Add user message immediately
@@ -108,159 +173,151 @@ export function useChat() {
     };
     addMessage(userMessage);
     resetCurrentStream();
-    abortControllerRef.current = new AbortController();
 
     try {
-      // Process images and log for debugging
-      const processedImages = images.map((img, idx) => {
+      // Try WebSocket first
+      const ws = await connectWebSocket();
+
+      // Process images
+      const processedImages = images.map((img) => {
         const data = img.split(',')[1] || img;
-        console.log(`[sendMessage] Image ${idx + 1}/${images.length}: ${data.length} chars, prefix: ${data.slice(0, 20)}...`);
         return { data };
       });
-      console.log(`[sendMessage] Sending ${processedImages.length} images to backend`);
 
-      const response = await fetch(`${API_BASE_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-ID': currentSession.id,
-        },
-        body: JSON.stringify({
-          message: content,
-          images: processedImages,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Error ${response.status}`);
-      }
-
-      if (!response.body) throw new Error('No response body');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Capture results locally to ensure they are preserved for the final message
+      // Set up message handler
       let capturedSearchResults: SearchResult[] | undefined;
       let capturedSearchQuery: string | undefined;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const handleMessage = (event: MessageEvent) => {
+        const data: WebSocketMessage = JSON.parse(event.data);
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+        switch (data.type) {
+          case 'start':
+            console.log('[WebSocket] Stream started:', data.request_id);
+            break;
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6);
-            if (jsonStr.trim() === '[DONE]') continue; // OpenAI style, just in case
+          case 'progress':
+            setStreamProgress({
+              tokensGenerated: data.tokens_generated as number,
+              maxTokens: data.max_tokens as number,
+              tokensPerSecond: data.tokens_per_second as number,
+              etaSeconds: data.eta_seconds as number,
+              percentage: data.percentage as number,
+            });
+            break;
 
-            try {
-              const event: SSEEvent = JSON.parse(jsonStr);
+          case 'content_delta':
+            if (data.content) appendContent(data.content as string);
+            break;
 
-              switch (event.type) {
-                case 'content_delta':
-                  if (event.content) appendContent(event.content);
-                  break;
-                case 'thought_delta':
-                  if (event.content) appendThought(event.content);
-                  break;
-                case 'images':
-                  console.log('[SSE] images event received:', {
-                    imagesCount: event.images?.length,
-                    query: event.query,
-                    requestInProgress: requestInProgressRef.current
-                  });
-                  if (event.images) {
-                    capturedSearchResults = event.images;
-                    capturedSearchQuery = event.query;
-                    setSearchResults(event.images, event.query);
-                    console.log('[SSE] capturedSearchResults set:', capturedSearchResults.length);
-                  }
-                  break;
-                case 'error':
-                  setChatError(event.error || 'Unknown stream error');
-                  break;
-                case 'done':
-                  // Finalize message
-                  break;
-              }
-            } catch (e) {
-              console.warn('Failed to parse SSE event:', e);
+          case 'thought_delta':
+            if (data.content) appendThought(data.content as string);
+            break;
+
+          case 'images':
+            if (data.images) {
+              capturedSearchResults = data.images as SearchResult[];
+              capturedSearchQuery = data.query as string;
+              setSearchResults(capturedSearchResults, capturedSearchQuery);
             }
-          }
-        }
-      }
+            break;
 
-      // After stream ends, add the assistant message to the list
-      const state = useChatStore.getState();
-      console.log('[sendMessage] Creating assistant message:', {
-        capturedSearchResults: capturedSearchResults?.length,
-        capturedSearchQuery,
-        stateSearchResults: state.currentSearchResults?.length,
-        stateSearchQuery: state.currentSearchQuery,
-        contentLength: state.currentContent.length,
-      });
-      const assistantMessage: Message = {
-        id: uuidv4(),
-        role: 'assistant',
-        content: state.currentContent,
-        thought: state.currentThought,
-        search_results: capturedSearchResults || state.currentSearchResults,
-        search_query: capturedSearchQuery || state.currentSearchQuery,
-        created_at: new Date().toISOString(),
+          case 'done':
+            console.log('[WebSocket] Stream complete:', data);
+            finalizeMessage(capturedSearchResults, capturedSearchQuery);
+            cleanup();
+            break;
+
+          case 'cancelled':
+            console.log('[WebSocket] Stream cancelled:', data);
+            finalizeMessage(capturedSearchResults, capturedSearchQuery, true);
+            cleanup();
+            break;
+
+          case 'error':
+            setChatError((data.message as string) || 'Unknown error');
+            cleanup();
+            break;
+        }
       };
-      console.log('[sendMessage] Final message search_results:', assistantMessage.search_results?.length);
-      addMessage(assistantMessage);
+
+      const finalizeMessage = (
+        searchResults?: SearchResult[],
+        searchQuery?: string,
+        wasCancelled = false
+      ) => {
+        const state = useChatStore.getState();
+        // Save message if there's content, thought, or was cancelled
+        if (state.currentContent || state.currentThought || wasCancelled) {
+          const assistantMessage: Message = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: state.currentContent,
+            thought: state.currentThought || undefined,
+            search_results: searchResults || state.currentSearchResults,
+            search_query: searchQuery || state.currentSearchQuery,
+            created_at: new Date().toISOString(),
+          };
+          addMessage(assistantMessage);
+          console.log('[finalizeMessage] Added message:', {
+            contentLen: state.currentContent.length,
+            thoughtLen: state.currentThought.length,
+          });
+        } else {
+          console.warn('[finalizeMessage] No content or thought to save');
+        }
+      };
+
+      const cleanup = () => {
+        ws.removeEventListener('message', handleMessage);
+        requestInProgressRef.current = false;
+        setStreaming(false);
+        setCancelling(false);
+        resetCurrentStream();
+      };
+
+      ws.addEventListener('message', handleMessage);
+
+      // Send chat message
+      ws.send(JSON.stringify({
+        type: 'chat',
+        session_id: currentSession.id,
+        message: content,
+        images: processedImages,
+      }));
 
       // Auto-generate title for first message
       if (isFirstMessage && content) {
-        // Immediately set truncation-based title as placeholder
         const fallbackTitle = generateTitleFromMessage(content);
         updateSessionTitle(currentSession.id, fallbackTitle);
-
-        // Fire and forget: async call to generate LLM title in background
-        generateLLMTitle(currentSession.id).catch(() => {
-          // Already have fallback title, silently ignore errors
-        });
+        generateLLMTitle(currentSession.id).catch(() => {});
       }
 
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        if (err.name === 'AbortError') {
-          console.log('Request aborted');
-        } else {
-          setChatError(err.message);
-        }
-      } else {
-        setChatError('An unknown error occurred');
-      }
-    } finally {
-      console.log('[sendMessage] Finally block - releasing lock');
+    } catch (error) {
+      console.error('[sendMessage] WebSocket error:', error);
+      setChatError(error instanceof Error ? error.message : 'WebSocket connection failed');
       requestInProgressRef.current = false;
       setStreaming(false);
-      resetCurrentStream();
-      abortControllerRef.current = null;
     }
-  }, [session, createSession, addMessage, setStreaming, resetCurrentStream, appendContent, appendThought, setSearchResults, setChatError, messages, updateSessionTitle, generateLLMTitle]);
+  }, [
+    session, createSession, addMessage, setStreaming, resetCurrentStream,
+    appendContent, appendThought, setSearchResults, setChatError, messages,
+    updateSessionTitle, generateLLMTitle, connectWebSocket, setStreamProgress, setCancelling
+  ]);
 
   const stopGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    setCancelling(true);
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel' }));
     }
-  }, []);
+  }, [setCancelling]);
 
   const editMessage = useCallback(
     async (messageId: string, newContent: string, images: string[] = []) => {
       if (!session || isStreaming) return;
 
       try {
-        // Truncate history at this message on backend
         const res = await fetch(`${API_BASE_URL}/sessions/${session.id}/history/truncate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -272,11 +329,8 @@ export function useChat() {
           throw new Error(errorData.error?.message || 'Failed to edit message');
         }
 
-        // Remove messages from local state
         removeMessagesFrom(messageId);
         setEditingMessageId(null);
-
-        // Send the edited message
         await sendMessage(newContent, images);
       } catch (err) {
         console.error('Edit message error:', err);
@@ -290,105 +344,98 @@ export function useChat() {
     async (messageId: string) => {
       if (!session || isStreaming) return;
 
-      // Remove the AI message from local state immediately
       removeMessagesFrom(messageId);
-
       setStreaming(true);
       resetCurrentStream();
-      abortControllerRef.current = new AbortController();
 
       try {
-        const response = await fetch(`${API_BASE_URL}/chat/regenerate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Session-ID': session.id,
-          },
-          body: JSON.stringify({ message_id: messageId }),
-          signal: abortControllerRef.current.signal,
-        });
+        // Connect WebSocket if not already connected
+        const ws = await connectWebSocket();
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `Error ${response.status}`);
-        }
+        // Set up message handler for regeneration response
+        const handleMessage = (event: MessageEvent) => {
+          const data: WebSocketMessage = JSON.parse(event.data);
 
-        if (!response.body) throw new Error('No response body');
+          switch (data.type) {
+            case 'start':
+              console.log('[WebSocket] Regenerate started:', data.request_id);
+              break;
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let capturedSearchResults: SearchResult[] | undefined;
-        let capturedSearchQuery: string | undefined;
+            case 'progress':
+              setStreamProgress({
+                tokensGenerated: data.tokens_generated as number,
+                maxTokens: data.max_tokens as number,
+                tokensPerSecond: data.tokens_per_second as number,
+                etaSeconds: data.eta_seconds as number,
+                percentage: data.percentage as number,
+              });
+              break;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+            case 'content_delta':
+              if (data.content) appendContent(data.content as string);
+              break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+            case 'thought_delta':
+              if (data.content) appendThought(data.content as string);
+              break;
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.slice(6);
-              if (jsonStr.trim() === '[DONE]') continue;
+            case 'done':
+              console.log('[WebSocket] Regenerate complete:', data);
+              finalizeRegenerate();
+              cleanup();
+              break;
 
-              try {
-                const event: SSEEvent = JSON.parse(jsonStr);
+            case 'cancelled':
+              console.log('[WebSocket] Regenerate cancelled:', data);
+              finalizeRegenerate();
+              cleanup();
+              break;
 
-                switch (event.type) {
-                  case 'content_delta':
-                    if (event.content) appendContent(event.content);
-                    break;
-                  case 'thought_delta':
-                    if (event.content) appendThought(event.content);
-                    break;
-                  case 'images':
-                    if (event.images) {
-                      capturedSearchResults = event.images;
-                      capturedSearchQuery = event.query;
-                      setSearchResults(event.images, event.query);
-                    }
-                    break;
-                  case 'error':
-                    setChatError(event.error || 'Unknown stream error');
-                    break;
-                }
-              } catch (e) {
-                console.warn('Failed to parse SSE event:', e);
-              }
-            }
+            case 'error':
+              setChatError((data.message as string) || 'Unknown error');
+              cleanup();
+              break;
           }
-        }
-
-        // Add the regenerated assistant message
-        const state = useChatStore.getState();
-        const assistantMessage: Message = {
-          id: uuidv4(),
-          role: 'assistant',
-          content: state.currentContent,
-          thought: state.currentThought,
-          search_results: capturedSearchResults || state.currentSearchResults,
-          search_query: capturedSearchQuery || state.currentSearchQuery,
-          created_at: new Date().toISOString(),
         };
-        addMessage(assistantMessage);
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          if (err.name !== 'AbortError') {
-            setChatError(err.message);
+
+        const finalizeRegenerate = () => {
+          const state = useChatStore.getState();
+          if (state.currentContent) {
+            const assistantMessage: Message = {
+              id: uuidv4(),
+              role: 'assistant',
+              content: state.currentContent,
+              thought: state.currentThought || undefined,
+              created_at: new Date().toISOString(),
+            };
+            addMessage(assistantMessage);
           }
-        } else {
-          setChatError('An unknown error occurred');
-        }
-      } finally {
+        };
+
+        const cleanup = () => {
+          ws.removeEventListener('message', handleMessage);
+          setStreaming(false);
+          setCancelling(false);
+          resetCurrentStream();
+        };
+
+        ws.addEventListener('message', handleMessage);
+
+        // Send regenerate request via WebSocket
+        ws.send(JSON.stringify({
+          type: 'regenerate',
+          session_id: session.id,
+          message_id: messageId,
+        }));
+
+      } catch (err) {
+        setChatError(err instanceof Error ? err.message : 'Failed to regenerate');
         setStreaming(false);
         resetCurrentStream();
-        abortControllerRef.current = null;
       }
     },
-    [session, isStreaming, removeMessagesFrom, setStreaming, resetCurrentStream, appendContent, appendThought, setSearchResults, addMessage, setChatError]
+    [session, isStreaming, removeMessagesFrom, setStreaming, resetCurrentStream,
+     appendContent, appendThought, addMessage, setChatError, connectWebSocket, setStreamProgress, setCancelling]
   );
 
   return {
@@ -407,5 +454,7 @@ export function useChat() {
     editingMessageId,
     setEditingMessageId,
     error: useChatStore((state) => state.error),
+    streamProgress,
+    isCancelling,
   };
 }

@@ -11,11 +11,16 @@
 }
 
 .ai-content-wrapper {
-  @apply flex flex-col items-start max-w-[85%] min-w-0 gap-2;
+  @apply flex flex-col items-stretch w-[85%] max-w-[85%] min-w-0 gap-2;
 }
 
 .ai-prose-container {
-  @apply prose dark:prose-invert prose-sm max-w-none w-full bg-card border border-border/50 px-6 py-5 rounded-2xl shadow-sm break-words leading-7 text-foreground;
+  @apply prose dark:prose-invert prose-sm max-w-none w-full bg-card border border-border/50 px-6 py-5 rounded-2xl shadow-sm break-words leading-7 text-foreground relative;
+}
+
+/* Copy button in top-right of AI message */
+.ai-copy-button {
+  @apply absolute top-2 right-2;
 }
 
 .code-block-wrapper {

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useEffect, useCallback } from 'react';
-import { useWebSocketChat } from '@/hooks/use-websocket-chat';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { useChat } from '@/hooks/use-chat';
 import MessageList from './MessageList';
-import ChatInput from './ChatInput';
+import ChatInput, { ChatInputHandle } from './ChatInput';
 import Sidebar from './Sidebar';
 import StreamProgressBar from './StreamProgressBar';
 import SearchPanel from '@/components/search/SearchPanel';
@@ -21,6 +21,7 @@ import ExportDialog from './ExportDialog';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 export default function ChatContainer() {
+  const chatInputRef = useRef<ChatInputHandle>(null);
   const {
     messages,
     isStreaming,
@@ -39,12 +40,55 @@ export default function ChatContainer() {
     error: chatError,
     streamProgress,
     isCancelling,
-  } = useWebSocketChat();
+  } = useChat();
   const { session, setSession, createSession, clearSession, hasHydrated, error: sessionError } = useSessionStore();
   const { isSidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
   const { open: openSearch } = useSearch();
   const [showShortcuts, setShowShortcuts] = React.useState(false);
   const [showExport, setShowExport] = React.useState(false);
+  const [isBackendReady, setIsBackendReady] = useState(false);
+
+  // Health check for backend connectivity (checks Redis + vLLM readiness)
+  useEffect(() => {
+    let isMounted = true;
+    let retryTimeout: NodeJS.Timeout;
+
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/health/ready`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000),
+        });
+        if (isMounted) {
+          if (res.ok) {
+            const data = await res.json();
+            // Only mark as ready if overall status is "ok" (all services healthy)
+            setIsBackendReady(data.status === 'ok');
+            if (data.status !== 'ok') {
+              // Retry if degraded (some services not ready)
+              retryTimeout = setTimeout(checkHealth, 2000);
+            }
+          } else {
+            setIsBackendReady(false);
+            retryTimeout = setTimeout(checkHealth, 2000);
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setIsBackendReady(false);
+          // Retry after 2 seconds if not ready
+          retryTimeout = setTimeout(checkHealth, 2000);
+        }
+      }
+    };
+
+    checkHealth();
+
+    return () => {
+      isMounted = false;
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, []);
 
   // Handle search result click - navigate to session and highlight message
   const handleSearchResultClick = useCallback(async (match: SearchMatch) => {
@@ -82,7 +126,8 @@ export default function ChatContainer() {
   const isError = !!chatError || !!sessionError;
   const getStatusText = () => {
     if (isError) return 'Error';
-    if (!session) return 'Connecting...';
+    if (!isBackendReady) return 'Connecting...';
+    if (!session) return 'Initializing...';
     if (isCancelling) return 'Cancelling...';
     if (isStreaming && streamProgress) {
       return `${streamProgress.tokensPerSecond.toFixed(1)} tok/s`;
@@ -94,13 +139,15 @@ export default function ChatContainer() {
 
   const statusColorClass = isError
     ? 'error'
-    : !session
+    : !isBackendReady
       ? 'offline'
-      : isCancelling
-        ? 'cancelling'
-        : isStreaming
-          ? 'streaming'
-          : 'online';
+      : !session
+        ? 'offline'
+        : isCancelling
+          ? 'cancelling'
+          : isStreaming
+            ? 'streaming'
+            : 'online';
 
   // Track which session ID we've loaded history for to avoid re-loading
   // when session metadata changes (like title updates)
@@ -193,6 +240,9 @@ export default function ChatContainer() {
         await loadHistory(nextSession.id);
         toast.success('Conversation deleted. Switched to previous chat.');
       }
+
+      // Focus the input box after delete
+      setTimeout(() => chatInputRef.current?.focus(), 100);
     } catch (error) {
       console.error('Error deleting conversation:', error);
       toast.error('Failed to delete conversation');
@@ -355,8 +405,9 @@ export default function ChatContainer() {
         </main>
 
         <div className="input-area-wrapper">
-          <ChatInput 
-            onSend={sendMessage} 
+          <ChatInput
+            ref={chatInputRef}
+            onSend={sendMessage}
             isStreaming={isStreaming}
             onStop={stopGeneration}
             hasMessages={messages.length > 0}

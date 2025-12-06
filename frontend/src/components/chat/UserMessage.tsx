@@ -249,27 +249,25 @@ export default function UserMessage({
         ) : (
           /* Message Bubble */
           message.content && (
-            <div className="relative group">
+            <div className="user-bubble-wrapper group">
               <div className="user-text-bubble">
                 <MarkdownItRenderer content={message.content} className="user-markdown" />
               </div>
-              <div className="user-message-actions group-hover:opacity-100">
-                <CopyButton
-                  text={message.content}
-                  className="text-muted-foreground hover:text-foreground hover:bg-muted h-7 w-7"
-                />
-                {onEdit && !isStreaming && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onEdit(message.id)}
-                    className="user-edit-button"
-                    title="Edit message"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                )}
-              </div>
+              <CopyButton
+                text={message.content}
+                className="user-copy-button"
+              />
+              {onEdit && !isStreaming && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onEdit(message.id)}
+                  className="user-edit-button"
+                  title="Edit message"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
           )
         )}

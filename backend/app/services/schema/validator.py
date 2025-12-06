@@ -11,6 +11,8 @@ from typing import Any
 
 from jsonschema import Draft7Validator
 
+from app.services.llm.prompts import SCHEMA_INSTRUCTION_TEMPLATE, SCHEMA_RETRY_PROMPT
+
 logger = logging.getLogger(__name__)
 
 
@@ -193,26 +195,11 @@ class SchemaValidator:
         schema_str = json.dumps(schema, indent=2)
         errors_str = "\n".join(f"- {e}" for e in errors)
 
-        retry_prompt = f"""Your previous response did not match the required JSON schema.
-
-VALIDATION ERRORS:
-{errors_str}
-
-REQUIRED SCHEMA:
-```json
-{schema_str}
-```
-
-Please provide a response that:
-1. Contains ONLY valid JSON (no markdown, no explanations outside the JSON)
-2. Strictly follows the schema above
-3. Fixes all the validation errors listed
-
-Original request: {original_prompt}
-
-Respond with the corrected JSON only:"""
-
-        return retry_prompt
+        return SCHEMA_RETRY_PROMPT.format(
+            errors=errors_str,
+            schema=schema_str,
+            original_prompt=original_prompt,
+        )
 
     def get_schema_instruction(self, schema: dict[str, Any]) -> str:
         """
@@ -226,17 +213,7 @@ Respond with the corrected JSON only:"""
         """
         schema_str = json.dumps(schema, indent=2)
 
-        return f"""You MUST respond with valid JSON that matches this schema:
-
-```json
-{schema_str}
-```
-
-IMPORTANT:
-- Respond ONLY with valid JSON - no markdown code blocks, no explanations
-- Your entire response must be parseable as JSON
-- Follow the schema exactly - include all required fields
-- Use the correct data types as specified in the schema"""
+        return SCHEMA_INSTRUCTION_TEMPLATE.format(schema=schema_str)
 
 
 # Convenience function for single-shot validation

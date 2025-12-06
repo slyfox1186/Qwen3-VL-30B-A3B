@@ -53,7 +53,7 @@ class ChatRequest(BaseModel):
         None,
         description="Optional images for multimodal input",
     )
-    max_tokens: int | None = Field(2048, ge=1, le=4096)
+    max_tokens: int | None = Field(8192, ge=1, le=16384)
     temperature: float | None = Field(0.7, ge=0.0, le=2.0)
     output_schema: OutputSchema | None = Field(
         None,

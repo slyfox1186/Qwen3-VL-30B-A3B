@@ -99,6 +99,51 @@ def get_local_ip() -> str:
     return "127.0.0.1"
 
 
+def kill_port_processes(ports: list[int]) -> None:
+    """Force kill any processes using the specified ports."""
+    killed_any = False
+
+    for port in ports:
+        try:
+            # Use lsof to find processes on this port
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                pids = result.stdout.strip().split("\n")
+                for pid_str in pids:
+                    try:
+                        pid = int(pid_str.strip())
+                        # Get process info before killing
+                        try:
+                            proc = psutil.Process(pid)
+                            proc_name = proc.name()
+                            cmdline = " ".join(proc.cmdline()[:3])  # First 3 args
+                        except Exception:
+                            proc_name = "unknown"
+                            cmdline = ""
+
+                        print_status("🔴", f"Killing process on port {port}: PID {pid} ({proc_name})", indent=1)
+                        if cmdline:
+                            print_status("  ", f"Command: {cmdline[:60]}...", indent=1)
+
+                        os.kill(pid, signal.SIGKILL)
+                        killed_any = True
+                    except (ValueError, ProcessLookupError, PermissionError) as e:
+                        print_status("⚠️", f"Could not kill PID {pid_str}: {e}", indent=1)
+        except subprocess.TimeoutExpired:
+            print_status("⚠️", f"Timeout checking port {port}", indent=1)
+        except Exception as e:
+            print_status("⚠️", f"Error checking port {port}: {e}", indent=1)
+
+    if killed_any:
+        print_status("⏳", "Waiting for ports to be released...", indent=1)
+        time.sleep(2)
+
+
 def wait_for_vllm_status(url: str, timeout_seconds: int = 120) -> bool:
     """Wait for vLLM health endpoint to respond."""
     try:
@@ -301,6 +346,20 @@ def main():
     mode = "Production" if prod_mode else "Development"
     print_status("📦", f"Mode: {mode}")
     print_status("📊", f"GPU:  {get_gpu_status()}")
+
+    # Kill any processes using our required ports
+    required_ports = []
+    if not backend_only:
+        required_ports.append(3000)  # Frontend
+    if not frontend_only:
+        required_ports.append(BACKEND_PORT)  # Backend
+        if not no_vllm:
+            required_ports.append(VLLM_PORT)  # vLLM
+
+    if required_ports:
+        print_header("PORT CLEANUP")
+        print_status("🔍", f"Checking ports: {', '.join(map(str, required_ports))}")
+        kill_port_processes(required_ports)
 
     # Track processes started by this script
     frontend_proc = None

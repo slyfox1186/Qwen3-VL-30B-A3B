@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useImperativeHandle, forwardRef } from 'react';
 import { Paperclip, Send, StopCircle, Mic, MicOff, ImagePlus } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,11 @@ interface ChatInputProps {
   hasMessages: boolean;
 }
 
-export default function ChatInput({ onSend, onStop, isStreaming, hasMessages }: ChatInputProps) {
+export interface ChatInputHandle {
+  focus: () => void;
+}
+
+const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(({ onSend, onStop, isStreaming, hasMessages }, ref) => {
   const {
     input,
     setInput,
@@ -33,6 +37,13 @@ export default function ChatInput({ onSend, onStop, isStreaming, hasMessages }: 
     onDragLeave,
     onDrop
   } = useComposer({ onSend, isStreaming });
+
+  // Expose focus method to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      textareaRef.current?.focus();
+    }
+  }), [textareaRef]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -165,4 +176,8 @@ export default function ChatInput({ onSend, onStop, isStreaming, hasMessages }: 
       </div>
     </div>
   );
-}
+});
+
+ChatInput.displayName = 'ChatInput';
+
+export default ChatInput;

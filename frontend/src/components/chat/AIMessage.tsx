@@ -43,25 +43,30 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
           />
         )}
 
-        {/* Main Content */}
-        {(message.content || message.search_results) ? (
+        {/* Main Content - only show if there's actual content or search results */}
+        {(message.content || message.search_results) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="ai-prose-container relative group"
           >
-            <MarkdownItRenderer content={message.content || ''} />
-            <CopyButton
-              text={message.content || ''}
-              className="absolute bottom-2 right-2"
-            />
+            {message.content && (
+              <MarkdownItRenderer content={message.content} />
+            )}
+
+            {message.content && (
+              <CopyButton
+                text={message.content}
+                className="ai-copy-button"
+              />
+            )}
 
             {/* Image Viewer */}
             {message.search_results && message.search_results.length > 0 && (
               <ImageViewer images={message.search_results} query={message.search_query} onImageReview={onImageReview} />
             )}
 
-            {isStreaming && (
+            {isStreaming && message.content && (
               <motion.span
                 className="ai-cursor"
                 animate={{ opacity: [1, 0] }}
@@ -69,14 +74,15 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
               />
             )}
           </motion.div>
-        ) : (
-          isStreaming && !message.thought && (
-            <div className="loading-dots-container">
-              <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0 }} />
-              <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0.2 }} />
-              <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0.4 }} />
-            </div>
-          )
+        )}
+
+        {/* Loading dots - only show when streaming with no thought yet */}
+        {isStreaming && !message.thought && !message.content && (
+          <div className="loading-dots-container">
+            <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0 }} />
+            <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0.2 }} />
+            <motion.div className="loading-dot" animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }} transition={{ duration: 1, repeat: Infinity, delay: 0.4 }} />
+          </div>
         )}
 
         <div className="ai-timestamp-wrapper">
