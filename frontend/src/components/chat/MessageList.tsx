@@ -9,6 +9,9 @@ import UserMessage from './UserMessage';
 import AIMessage from './AIMessage';
 import QwenLogo from './QwenLogo';
 
+// Threshold in pixels - if user is within this distance of bottom, auto-scroll continues
+const SCROLL_THRESHOLD = 150;
+
 interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
@@ -39,18 +42,48 @@ export default function MessageList({
   onRegenerate,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledAwayRef = useRef(false);
 
+  // Handle user scroll - detect if they scrolled away from bottom
   useEffect(() => {
-    if (scrollRef.current) {
-      const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTo({
-          top: scrollContainer.scrollHeight,
-          behavior: 'smooth'
-        });
+    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!scrollContainer) return;
+
+    let lastScrollTop = scrollContainer.scrollTop;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
+      const scrolledUp = scrollTop < lastScrollTop;
+      lastScrollTop = scrollTop;
+
+      if (scrolledUp && !isNearBottom) {
+        userScrolledAwayRef.current = true;
+      } else if (isNearBottom) {
+        userScrolledAwayRef.current = false;
       }
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Auto-scroll only if user hasn't scrolled away
+  useEffect(() => {
+    if (userScrolledAwayRef.current) return;
+
+    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages, currentContent, isStreaming, currentSearchResults]);
+  }, [messages, currentContent, currentSearchResults]);
+
+  // Reset scroll state when new message starts
+  useEffect(() => {
+    if (isStreaming) {
+      userScrolledAwayRef.current = false;
+    }
+  }, [isStreaming]);
 
   return (
     <ScrollArea className="scroll-area" ref={scrollRef}>

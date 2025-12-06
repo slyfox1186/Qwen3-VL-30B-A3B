@@ -1,4 +1,4 @@
-"""Token counting utilities using tiktoken.
+"""Token counting utilities using Qwen's actual tokenizer.
 
 Provides dynamic max_tokens calculation based on prompt size
 to prevent exceeding model context limits.
@@ -9,81 +9,67 @@ import logging
 from functools import lru_cache
 from typing import Any
 
-import tiktoken
+from transformers import AutoTokenizer
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Qwen models use cl100k_base encoding (same as GPT-4)
-DEFAULT_ENCODING = "cl100k_base"
-
-# Minimal buffer for tokenizer variance
+# Small safety buffer for edge cases
 TOKEN_SAFETY_BUFFER = 10
 
 
 @lru_cache(maxsize=1)
-def get_encoding() -> tiktoken.Encoding:
-    """Get cached tiktoken encoding."""
-    return tiktoken.get_encoding(DEFAULT_ENCODING)
+def get_tokenizer() -> AutoTokenizer:
+    """Get cached Qwen tokenizer instance."""
+    settings = get_settings()
+    model_name = settings.vllm_model
+    logger.info(f"Loading tokenizer for model: {model_name}")
+    return AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
 
 def count_message_tokens(messages: list[dict[str, Any]]) -> int:
     """
-    Count tokens in a list of chat messages.
+    Count tokens in a list of chat messages using Qwen's tokenizer.
 
     Args:
         messages: List of message dicts with 'role' and 'content'
 
     Returns:
-        Estimated token count
+        Actual token count
     """
-    encoding = get_encoding()
-    total_tokens = 0
+    tokenizer = get_tokenizer()
 
-    for message in messages:
-        # Each message has overhead for role, delimiters
-        total_tokens += 4  # <|im_start|>role\n ... <|im_end|>\n
-
-        role = message.get("role", "")
-        content = message.get("content", "")
-
-        # Count role tokens
-        total_tokens += len(encoding.encode(role))
-
-        # Handle content (can be string or list for multimodal)
-        if isinstance(content, str):
-            total_tokens += len(encoding.encode(content))
-        elif isinstance(content, list):
-            # Multimodal content
-            for part in content:
-                if isinstance(part, dict):
-                    if part.get("type") == "text":
-                        text = part.get("text", "")
-                        total_tokens += len(encoding.encode(text))
-                    elif part.get("type") == "image_url":
-                        # Images use ~85 tokens for low detail, ~765 for high
-                        # Use conservative estimate
-                        total_tokens += 765
-                elif isinstance(part, str):
-                    total_tokens += len(encoding.encode(part))
-
-        # Handle tool calls in assistant messages
-        tool_calls = message.get("tool_calls")
-        if tool_calls:
-            for tc in tool_calls:
-                # Tool call overhead
-                total_tokens += 10
-                func = tc.get("function", {})
-                if func.get("name"):
-                    total_tokens += len(encoding.encode(func["name"]))
-                if func.get("arguments"):
-                    total_tokens += len(encoding.encode(func["arguments"]))
-
-    # Add priming tokens
-    total_tokens += 3
-
-    return total_tokens
+    # Use apply_chat_template to get the exact tokenized prompt
+    try:
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        tokens = tokenizer.encode(text)
+        return len(tokens)
+    except Exception as e:
+        logger.warning(f"Failed to use chat template, falling back to simple count: {e}")
+        # Fallback: count each message separately
+        total_tokens = 0
+        for message in messages:
+            content = message.get("content", "")
+            if isinstance(content, str):
+                total_tokens += len(tokenizer.encode(content))
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        if part.get("type") == "text":
+                            total_tokens += len(tokenizer.encode(part.get("text", "")))
+                        elif part.get("type") == "image_url":
+                            # Images use variable tokens based on resolution
+                            total_tokens += 1000  # Conservative estimate
+                    elif isinstance(part, str):
+                        total_tokens += len(tokenizer.encode(part))
+            # Add overhead per message
+            total_tokens += 10
+        return total_tokens
 
 
 def count_tools_tokens(tools: list[dict[str, Any]] | None) -> int:
@@ -94,15 +80,14 @@ def count_tools_tokens(tools: list[dict[str, Any]] | None) -> int:
         tools: List of tool definitions in OpenAI format
 
     Returns:
-        Estimated token count for tools
+        Token count for tools
     """
     if not tools:
         return 0
 
-    encoding = get_encoding()
-    # Serialize tools to JSON and count
+    tokenizer = get_tokenizer()
     tools_json = json.dumps(tools)
-    return len(encoding.encode(tools_json))
+    return len(tokenizer.encode(tools_json))
 
 
 def calculate_max_tokens(
@@ -126,7 +111,7 @@ def calculate_max_tokens(
     settings = get_settings()
     model_context = settings.vllm_max_model_len
 
-    # Count input tokens
+    # Count input tokens using actual Qwen tokenizer
     prompt_tokens = count_message_tokens(messages)
     tools_tokens = count_tools_tokens(tools)
     total_input = prompt_tokens + tools_tokens
@@ -139,14 +124,12 @@ def calculate_max_tokens(
             f"Prompt too long: {total_input} tokens, model context: {model_context}. "
             "Setting minimum completion tokens."
         )
-        # Return minimum to at least try (vLLM will error if truly over)
         return 100
 
     # Use requested max if it fits, otherwise cap at available
     if requested_max_tokens:
         max_tokens = min(requested_max_tokens, available_tokens)
     else:
-        # Default to all available space
         max_tokens = available_tokens
 
     logger.debug(
@@ -167,5 +150,5 @@ def estimate_tokens(text: str) -> int:
     Returns:
         Token count
     """
-    encoding = get_encoding()
-    return len(encoding.encode(text))
+    tokenizer = get_tokenizer()
+    return len(tokenizer.encode(text))

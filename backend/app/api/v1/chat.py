@@ -196,7 +196,7 @@ async def chat_sync(
         result = await llm_client.chat_completion(
             messages=llm_messages,
             max_tokens=request.max_tokens or settings.vllm_max_tokens,
-            temperature=request.temperature or 0.7,
+            temperature=request.temperature or 0.6,
         )
 
         # Create and save assistant message
@@ -343,7 +343,7 @@ async def chat_structured(
             result = await llm_client.chat_completion(
                 messages=llm_messages,
                 max_tokens=request.max_tokens or settings.vllm_max_tokens,
-                temperature=request.temperature or 0.7,
+                temperature=request.temperature or 0.6,
             )
 
             response_content = result["content"]

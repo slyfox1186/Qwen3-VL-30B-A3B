@@ -22,7 +22,7 @@ class LLMQueueProducer:
         session_id: str,
         messages: list[dict[str, Any]],
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float = 0.6,
         priority: int = 5,
         timeout_ms: int = 60000,
     ) -> str:

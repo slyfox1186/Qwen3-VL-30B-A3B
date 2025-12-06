@@ -40,14 +40,15 @@ def validate_conda_env() -> None:
 
 
 def load_env():
-    """Load .env file from root directory."""
+    """Load .env file from root directory, overriding any existing env vars."""
     env_file = ROOT_DIR / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+                # Force override to prevent stale shell env vars from taking precedence
+                os.environ[key.strip()] = value.strip().strip('"').strip("'")
 
 
 # Load environment variables
@@ -491,7 +492,7 @@ def main():
                     "--tool-call-parser",
                     "hermes",
                     "--reasoning-parser",
-                    "qwen3",
+                    "deepseek_r1",
                 ]
 
                 vllm_proc = subprocess.Popen(vllm_cmd, env=env)

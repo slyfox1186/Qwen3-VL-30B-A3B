@@ -22,6 +22,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/a
 
 export default function ChatContainer() {
   const chatInputRef = useRef<ChatInputHandle>(null);
+  const [shouldFocusInput, setShouldFocusInput] = useState(false);
   const {
     messages,
     isStreaming,
@@ -165,6 +166,9 @@ export default function ChatContainer() {
           return;
         }
 
+        // Mark that we want to focus after this session is ready
+        setShouldFocusInput(true);
+
         // Session exists, load its history
         const loaded = await loadHistory(session.id);
         if (loaded) {
@@ -203,6 +207,14 @@ export default function ChatContainer() {
     initSession();
   }, [hasHydrated, session, createSession, loadHistory, clearSession, setSession]);
 
+  // Focus input when flagged (after session loads/creates)
+  useEffect(() => {
+    if (shouldFocusInput) {
+      setShouldFocusInput(false);
+      setTimeout(() => chatInputRef.current?.focus(), 100);
+    }
+  }, [shouldFocusInput]);
+
   const handleDeleteConversation = useCallback(async () => {
     if (!session) return;
 
@@ -232,6 +244,7 @@ export default function ChatContainer() {
         loadedSessionRef.current = null;
         clearSession();
         toast.success('Conversation deleted. Creating new chat...');
+        // Focus will be triggered by initSession effect when new session is created
       } else {
         // Switch to the most recently used session (first in list)
         const nextSession = remainingSessions[0];

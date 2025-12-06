@@ -398,8 +398,7 @@ async def generate_session_title(
     llm_messages = [
         {
             "role": "system",
-            "content": """You are Gemma a helpful AI assistant. Your ONLY task is to generate a 6-word max sidebar title from the user's query.
-Return ONLY the title and nothing else.""",
+            "content": "Generate a 6-word max title. Do not think this time and instead return your response IMMEDIATELY.",
         },
         {"role": "user", "content": content_for_title},
     ]

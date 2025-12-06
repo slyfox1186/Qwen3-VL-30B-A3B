@@ -71,10 +71,10 @@ async def readiness_check(
         )
     else:
         services["vllm"] = ServiceHealth(
-            status="error",
-            error="Connection failed",
+            status="starting",
+            error="Model loading - please wait",
         )
-        overall_status = "degraded"
+        overall_status = "starting"
 
     response = DetailedHealthResponse(
         status=overall_status,

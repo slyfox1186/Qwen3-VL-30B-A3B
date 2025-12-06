@@ -263,6 +263,11 @@ export function useChat() {
             contentLen: state.currentContent.length,
             thoughtLen: state.currentThought.length,
           });
+
+          // Generate LLM title AFTER response completes (not during)
+          if (isFirstMessage && content && currentSession) {
+            generateLLMTitle(currentSession.id).catch(() => {});
+          }
         } else {
           console.warn('[finalizeMessage] No content or thought to save');
         }
@@ -286,11 +291,10 @@ export function useChat() {
         images: processedImages,
       }));
 
-      // Auto-generate title for first message
+      // Set fallback title immediately, LLM title generated after response completes
       if (isFirstMessage && content) {
         const fallbackTitle = generateTitleFromMessage(content);
         updateSessionTitle(currentSession.id, fallbackTitle);
-        generateLLMTitle(currentSession.id).catch(() => {});
       }
 
     } catch (error) {

@@ -1,9 +1,11 @@
-"""vLLM OpenAI-compatible client."""
+"""vLLM client with raw HTTP streaming for reasoning_content support."""
 
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI
 
 from app.config import get_settings
@@ -13,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 class VLLMClient:
     """
-    Async client for vLLM using OpenAI-compatible API.
+    Async client for vLLM using raw HTTP for streaming.
 
-    Supports both streaming and non-streaming completions
-    for multimodal (vision-language) models.
+    Uses httpx for streaming to access vLLM-specific fields like
+    reasoning_content which are NOT available through the OpenAI client.
     """
 
     def __init__(
@@ -28,95 +30,119 @@ class VLLMClient:
     ):
         settings = get_settings()
 
-        self._base_url = base_url or settings.vllm_base_url
+        self._base_url = (base_url or settings.vllm_base_url).rstrip("/")
         self._api_key = api_key or settings.vllm_api_key
         self._model = model or settings.vllm_model
         self._timeout = timeout or settings.vllm_timeout
 
+        # OpenAI client for non-streaming and health checks
         self._client = AsyncOpenAI(
             base_url=self._base_url,
             api_key=self._api_key,
             timeout=self._timeout,
         )
 
+        # httpx client for streaming (to access reasoning_content)
+        self._http_client = httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=httpx.Timeout(self._timeout, connect=10.0),
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
     async def chat_completion_stream(
         self,
         messages: list[dict[str, Any]],
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float = 0.6,
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
-        Stream chat completion with tool support.
+        Stream chat completion using raw HTTP to access reasoning_content.
 
-        Args:
-            messages: Chat messages in OpenAI format
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            tools: Optional list of tool definitions
-            tool_choice: Optional tool choice ("auto", "none", or specific tool)
+        vLLM's reasoning_content field is NOT OpenAI API compatible,
+        so we must parse the SSE stream directly.
 
         Yields:
-            Dict with 'type' ('content' or 'tool_call') and data
+            Dict with 'type' ('reasoning', 'content', or 'tool_call') and data
         """
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "max_completion_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if tools:
+            payload["tools"] = tools
+        if tool_choice:
+            payload["tool_choice"] = tool_choice
+
         try:
-            kwargs: dict[str, Any] = {
-                "model": self._model,
-                "messages": messages,
-                "max_completion_tokens": max_tokens,
-                "temperature": temperature,
-                "stream": True,
-            }
-            if tools:
-                kwargs["tools"] = tools
-            if tool_choice:
-                kwargs["tool_choice"] = tool_choice
+            async with self._http_client.stream(
+                "POST",
+                "/chat/completions",
+                json=payload,
+            ) as response:
+                response.raise_for_status()
 
-            logger.info(f"Sending to vLLM with extra_body: {kwargs.get('extra_body')}")
-            stream = await self._client.chat.completions.create(**kwargs)
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
 
-            chunk_count = 0
+                    # SSE format: "data: {...}"
+                    if not line.startswith("data: "):
+                        continue
 
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
+                    data_str = line[6:]  # Remove "data: " prefix
 
-                delta = chunk.choices[0].delta
-                chunk_count += 1
+                    if data_str == "[DONE]":
+                        break
 
-                # Debug: log first 5 and around chunk 10-15 to catch transition
-                if chunk_count <= 5 or (10 <= chunk_count <= 15):
-                    logger.warning(
-                        f"CHUNK #{chunk_count}: content={delta.content!r}, "
-                        f"reasoning={getattr(delta, 'reasoning_content', None)!r}"
-                    )
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
 
-                # Yield reasoning/thinking tokens (vLLM with --reasoning-parser)
-                # The reasoning_content field is used when reasoning parser is enabled
-                reasoning = getattr(delta, "reasoning_content", None)
-                if reasoning:
-                    yield {"type": "reasoning", "content": reasoning}
+                    choices = chunk.get("choices", [])
+                    if not choices:
+                        continue
 
-                # Yield content tokens
-                if delta.content:
-                    yield {"type": "content", "content": delta.content}
+                    delta = choices[0].get("delta", {})
 
-                # Yield tool calls
-                if delta.tool_calls:
-                    for tool_call in delta.tool_calls:
-                        yield {
-                            "type": "tool_call",
-                            "tool_call": {
-                                "id": tool_call.id,
-                                "index": tool_call.index,
-                                "function": {
-                                    "name": tool_call.function.name if tool_call.function else None,
-                                    "arguments": tool_call.function.arguments if tool_call.function else None,
-                                }
+                    # Yield reasoning_content (vLLM --reasoning-parser)
+                    reasoning = delta.get("reasoning_content")
+                    if reasoning:
+                        yield {"type": "reasoning", "content": reasoning}
+
+                    # Yield content
+                    content = delta.get("content")
+                    if content:
+                        yield {"type": "content", "content": content}
+
+                    # Yield tool calls
+                    tool_calls = delta.get("tool_calls")
+                    if tool_calls:
+                        for tc in tool_calls:
+                            func = tc.get("function", {})
+                            yield {
+                                "type": "tool_call",
+                                "tool_call": {
+                                    "id": tc.get("id"),
+                                    "index": tc.get("index", 0),
+                                    "function": {
+                                        "name": func.get("name"),
+                                        "arguments": func.get("arguments"),
+                                    },
+                                },
                             }
-                        }
 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"vLLM HTTP error: {e.response.status_code} - {e.response.text}")
+            raise
         except Exception as e:
             logger.error(f"vLLM streaming error: {e}")
             raise
@@ -125,7 +151,7 @@ class VLLMClient:
         self,
         messages: list[dict[str, Any]],
         max_tokens: int = 4096,
-        temperature: float = 0.7,
+        temperature: float = 0.6,
     ) -> dict[str, Any]:
         """
         Non-streaming chat completion.
@@ -170,9 +196,11 @@ class VLLMClient:
             True if server is responsive
         """
         try:
-            # Try to list models as a health check
             await self._client.models.list()
             return True
-        except Exception as e:
-            logger.error(f"vLLM health check failed: {e}")
+        except Exception:
             return False
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self._http_client.aclose()
