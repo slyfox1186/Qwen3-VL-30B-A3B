@@ -15,8 +15,10 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Small safety buffer for edge cases
-TOKEN_SAFETY_BUFFER = 10
+# Safety multiplier for tokenizer differences (vLLM may count more tokens)
+TOKEN_SAFETY_MULTIPLIER = 1.5
+# Absolute max to prevent context overflow
+MAX_COMPLETION_TOKENS = 8192
 
 
 @lru_cache(maxsize=1)
@@ -116,24 +118,26 @@ def calculate_max_tokens(
     tools_tokens = count_tools_tokens(tools)
     total_input = prompt_tokens + tools_tokens
 
+    # Apply safety multiplier (vLLM tokenizer may count more than ours)
+    adjusted_input = int(total_input * TOKEN_SAFETY_MULTIPLIER)
+
     # Calculate available tokens for completion
-    available_tokens = model_context - total_input - TOKEN_SAFETY_BUFFER
+    available_tokens = model_context - adjusted_input
 
     if available_tokens <= 0:
         logger.warning(
-            f"Prompt too long: {total_input} tokens, model context: {model_context}. "
-            "Setting minimum completion tokens."
+            f"Prompt too long: {total_input} tokens (adjusted: {adjusted_input}), "
+            f"model context: {model_context}. Setting minimum completion tokens."
         )
         return 100
 
-    # Use requested max if it fits, otherwise cap at available
+    # Cap at absolute max and requested max
+    max_tokens = min(available_tokens, MAX_COMPLETION_TOKENS)
     if requested_max_tokens:
-        max_tokens = min(requested_max_tokens, available_tokens)
-    else:
-        max_tokens = available_tokens
+        max_tokens = min(max_tokens, requested_max_tokens)
 
     logger.debug(
-        f"Token calculation: prompt={prompt_tokens}, tools={tools_tokens}, "
+        f"Token calculation: prompt={prompt_tokens}, adjusted={adjusted_input}, "
         f"available={available_tokens}, max_tokens={max_tokens}"
     )
 

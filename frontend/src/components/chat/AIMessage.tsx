@@ -17,9 +17,10 @@ interface AIMessageProps {
   isGlobalStreaming?: boolean;
   onImageReview?: (imageUrl: string) => void;
   onRegenerate?: (messageId: string) => void;
+  onThinkingToggle?: (isOpen: boolean) => void;
 }
 
-export default function AIMessage({ message, isStreaming, isGlobalStreaming, onImageReview, onRegenerate }: AIMessageProps) {
+export default function AIMessage({ message, isStreaming, isGlobalStreaming, onImageReview, onRegenerate, onThinkingToggle }: AIMessageProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -36,15 +37,15 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
       <div className="ai-content-wrapper">
         {/* Thinking Bubble */}
         {message.thought && (
-          <ThinkingBubble 
-            content={message.thought} 
+          <ThinkingBubble
+            content={message.thought}
             isComplete={!isStreaming || (!!message.content && message.content.length > 0)}
-            data-testid="thinking-bubble"
+            onOpenChange={onThinkingToggle}
           />
         )}
 
-        {/* Main Content - only show if there's actual content or search results */}
-        {(message.content || message.search_results) && (
+        {/* Main Content - only show if there's actual non-empty content or search results */}
+        {((message.content && message.content.trim().length > 0) || message.search_results) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

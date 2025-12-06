@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://localhost:8000/v1"
     vllm_api_key: str = "EMPTY"
     vllm_model: str = "Qwen3-VL-30B-A3B-Instruct-AWQ-4bit"
-    vllm_max_model_len: int = 16384
+    vllm_max_model_len: int = 26000
     vllm_timeout: float = 120.0
     vllm_temperature: float = 0.6  # Qwen3 recommended
 

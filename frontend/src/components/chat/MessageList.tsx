@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Message, SearchResult } from '@/types/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { motion } from 'framer-motion';
@@ -10,7 +10,8 @@ import AIMessage from './AIMessage';
 import QwenLogo from './QwenLogo';
 
 // Threshold in pixels - if user is within this distance of bottom, auto-scroll continues
-const SCROLL_THRESHOLD = 150;
+// Using a very low threshold (20px) so even a tiny scroll-up breaks auto-scroll
+const SCROLL_THRESHOLD = 20;
 
 interface MessageListProps {
   messages: Message[];
@@ -43,6 +44,27 @@ export default function MessageList({
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledAwayRef = useRef(false);
+  const thinkingBubbleOpenedRef = useRef(false);
+
+  // Scroll to bottom helper
+  const scrollToBottom = useCallback(() => {
+    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+    }
+  }, []);
+
+  // Handle thinking bubble toggle - when opened, re-enable auto-scroll and scroll to bottom
+  const handleThinkingToggle = useCallback((isOpen: boolean) => {
+    thinkingBubbleOpenedRef.current = isOpen;
+    if (isOpen) {
+      userScrolledAwayRef.current = false;
+      // Small delay to let the bubble expand before scrolling
+      requestAnimationFrame(() => {
+        requestAnimationFrame(scrollToBottom);
+      });
+    }
+  }, [scrollToBottom]);
 
   // Handle user scroll - detect if they scrolled away from bottom
   useEffect(() => {
@@ -71,12 +93,15 @@ export default function MessageList({
   // Auto-scroll only if user hasn't scrolled away
   useEffect(() => {
     if (userScrolledAwayRef.current) return;
+    scrollToBottom();
+  }, [messages, currentContent, currentThought, currentSearchResults, scrollToBottom]);
 
-    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollContainer) {
-      scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+  // Keep scrolling when thinking bubble is open and content updates (but respect user scroll-away)
+  useEffect(() => {
+    if (thinkingBubbleOpenedRef.current && isStreaming && currentThought && !userScrolledAwayRef.current) {
+      scrollToBottom();
     }
-  }, [messages, currentContent, currentSearchResults]);
+  }, [currentThought, isStreaming, scrollToBottom]);
 
   // Reset scroll state when new message starts
   useEffect(() => {
@@ -106,6 +131,7 @@ export default function MessageList({
               isGlobalStreaming={isStreaming}
               onImageReview={onImageReview}
               onRegenerate={onRegenerate}
+              onThinkingToggle={handleThinkingToggle}
             />
           )
         ))}
@@ -124,6 +150,7 @@ export default function MessageList({
             }}
             isStreaming={true}
             onImageReview={onImageReview}
+            onThinkingToggle={handleThinkingToggle}
           />
         )}
 

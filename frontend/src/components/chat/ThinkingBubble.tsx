@@ -9,17 +9,24 @@ import { CopyButton } from '@/components/ui/CopyButton';
 interface ThinkingBubbleProps {
   content: string;
   isComplete?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
-export const ThinkingBubble: React.FC<ThinkingBubbleProps> = ({ content, isComplete = true }) => {
+export const ThinkingBubble: React.FC<ThinkingBubbleProps> = ({ content, isComplete = true, onOpenChange }) => {
   const [isOpen, setIsOpen] = useState(false);
+
+  const handleToggle = () => {
+    const newOpenState = !isOpen;
+    setIsOpen(newOpenState);
+    onOpenChange?.(newOpenState);
+  };
 
   if (!content) return null;
 
   return (
     <div className="thinking-bubble-container group">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className="thinking-toggle-button"
       >
         <div className="thinking-toggle-left">

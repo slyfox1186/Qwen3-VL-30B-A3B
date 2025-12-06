@@ -4,7 +4,7 @@ Provides persistent storage for:
 - Key-value facts (e.g., user_name = "jeffrey")
 - Semantic memories with vector embeddings
 
-Uses asymmetric encoding with google/embeddinggemma-300m:
+Uses asymmetric encoding with google/embeddinggemma-300m-qat-q8_0-unquantized:
 - encode_query() for search queries
 - encode_document() for stored memories
 """
@@ -26,10 +26,9 @@ _model_name: str | None = None
 
 
 def _load_memory_model(model_name: str) -> Any:
-    """Load the memory embedding model lazily on GPU only.
+    """Load the memory embedding model on CPU with all available cores.
 
-    This function REQUIRES a CUDA-capable GPU. It will fail if no GPU is available
-    rather than falling back to CPU for performance reasons.
+    Forces CPU to avoid GPU memory contention with vLLM.
     """
     global _model, _model_name
 
@@ -37,39 +36,26 @@ def _load_memory_model(model_name: str) -> Any:
         return _model
 
     try:
+        import os
+
         import torch
         from sentence_transformers import SentenceTransformer
 
-        # Verify CUDA is available - fail fast if not
-        if not torch.cuda.is_available():
-            logger.error(
-                "CUDA not available. Memory embedding model REQUIRES GPU. "
-                "Memory search will be disabled."
-            )
-            return None
+        # Use all available CPU cores
+        num_threads = os.cpu_count() or 8
+        torch.set_num_threads(num_threads)
 
-        device = "cuda"
-        logger.info(f"Loading memory embedding model on GPU: {model_name}")
-
-        # Load model directly to GPU
-        _model = SentenceTransformer(model_name, device=device)
+        logger.info(f"Loading memory embedding model on CPU ({num_threads} threads): {model_name}")
+        _model = SentenceTransformer(model_name, device="cpu")
         _model_name = model_name
-
-        # Log GPU info for confirmation
-        gpu_name = torch.cuda.get_device_name(0)
-        logger.info(f"Memory embedding model loaded on GPU: {gpu_name}")
-
+        logger.info(f"Memory embedding model loaded on CPU with {num_threads} threads")
         return _model
 
     except ImportError as e:
-        logger.warning(
-            f"Required package not installed: {e}. "
-            "Memory search will be disabled. "
-            "Install with: pip install sentence-transformers torch"
-        )
+        logger.warning(f"Required package not installed: {e}. Memory search disabled.")
         return None
     except Exception as e:
-        logger.error(f"Failed to load memory embedding model on GPU: {e}")
+        logger.error(f"Failed to load memory embedding model: {e}")
         return None
 
 

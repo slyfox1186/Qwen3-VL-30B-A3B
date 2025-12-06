@@ -24,6 +24,7 @@ from app.services.image.processor import ImageValidationError
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
 from app.services.llm.prompts import get_system_prompt
+from app.services.llm.token_utils import calculate_max_tokens
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
 
@@ -110,7 +111,7 @@ class WebSocketChatHandler:
         session_id = data.get("session_id")
         content = data.get("message", "")
         images_data = data.get("images", [])
-        max_tokens = data.get("max_tokens") or self.settings.vllm_max_tokens
+        requested_max_tokens = data.get("max_tokens")
         temperature = data.get("temperature", 0.6)
 
         if not session_id:
@@ -184,6 +185,9 @@ class WebSocketChatHandler:
         llm_messages.append(
             build_current_user_message(content, image_urls, history_had_images)
         )
+
+        # Calculate safe max_tokens based on prompt size
+        max_tokens = calculate_max_tokens(llm_messages, requested_max_tokens=requested_max_tokens)
 
         # Start generation with cancellation support
         self._generation_task = asyncio.create_task(
