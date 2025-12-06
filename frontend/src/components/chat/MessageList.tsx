@@ -9,9 +9,9 @@ import UserMessage from './UserMessage';
 import AIMessage from './AIMessage';
 import QwenLogo from './QwenLogo';
 
-// Threshold in pixels - if user scrolls more than this distance from bottom, auto-scroll stops
-// Using 50px to allow easier escape from autoscroll while avoiding accidental triggers
-const SCROLL_THRESHOLD = 50;
+// Threshold in pixels - user must scroll within this distance from bottom to re-enable autoscroll
+// Low threshold (15px) ensures user must deliberately scroll to bottom to re-engage
+const SCROLL_RE_ENABLE_THRESHOLD = 15;
 
 interface MessageListProps {
   messages: Message[];
@@ -60,32 +60,35 @@ export default function MessageList({
     }
   }, [scrollToBottom]);
 
-  // Handle user scroll - detect if they scrolled away from bottom
-  // Once user scrolls away during streaming, stay "scrolled away" until streaming stops
+  // Wheel event listener - directly detect user intent to scroll up
+  // This fires BEFORE scroll events, capturing raw user input for immediate response
   useEffect(() => {
-    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
     if (!scrollContainer) return;
 
-    let lastScrollTop = scrollContainer.scrollTop;
-    let lastScrollTime = 0;
+    const handleWheel = (e: WheelEvent) => {
+      // deltaY < 0 means scrolling UP (user wants to see previous content)
+      if (e.deltaY < 0) {
+        userScrolledAwayRef.current = true;
+      }
+    };
+
+    scrollContainer.addEventListener('wheel', handleWheel, { passive: true });
+    return () => scrollContainer.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Scroll event listener - only used to detect when user scrolls back to bottom
+  // This re-enables autoscroll when user deliberately returns to the end
+  useEffect(() => {
+    const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
-      const now = Date.now();
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const scrolledUp = scrollTop < lastScrollTop - 1; // 1px tolerance for tiny fluctuations
 
-      lastScrollTop = scrollTop;
-
-      // If user actively scrolls up (not just smooth scroll animation), mark as scrolled away
-      if (scrolledUp && distanceFromBottom > SCROLL_THRESHOLD) {
-        userScrolledAwayRef.current = true;
-        lastScrollTime = now;
-      }
-
-      // Only re-enable autoscroll if user manually scrolls to bottom AND we're not mid-scroll
-      // (wait 200ms after last scroll to distinguish user intent from animation)
-      if (distanceFromBottom < 30 && now - lastScrollTime > 200) {
+      // Re-enable autoscroll only when user scrolls very close to bottom
+      if (distanceFromBottom < SCROLL_RE_ENABLE_THRESHOLD) {
         userScrolledAwayRef.current = false;
       }
     };
@@ -107,12 +110,9 @@ export default function MessageList({
     }
   }, [currentThought, isStreaming, scrollToBottom]);
 
-  // Reset scroll state when new message starts
-  useEffect(() => {
-    if (isStreaming) {
-      userScrolledAwayRef.current = false;
-    }
-  }, [isStreaming]);
+  // Note: We intentionally DO NOT reset scroll state when streaming starts.
+  // This gives users full control - once they scroll away, they stay scrolled away
+  // until they deliberately scroll back to the bottom.
 
   return (
     <ScrollArea className="scroll-area" ref={scrollRef}>
