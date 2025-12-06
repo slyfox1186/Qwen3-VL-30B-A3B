@@ -15,6 +15,10 @@ redis>=5.0.0
 # OpenAI Client (for vLLM)
 openai>=1.10.0
 
+# Qwen-Agent (official Qwen tool calling framework)
+qwen-agent>=0.0.14
+python-dateutil>=2.8.0  # qwen-agent dependency
+
 # Token Counting
 tiktoken>=0.7.0
 

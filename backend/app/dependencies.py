@@ -7,6 +7,7 @@ from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from app.config import get_settings
 from app.redis.client import RedisClient
 from app.services.llm.client import VLLMClient
+from app.services.llm.qwen_client import QwenAgentClient
 from app.services.schema.registry import SchemaRegistry, get_schema_registry
 from app.services.schema.validator import SchemaValidator
 from app.services.session.history import ChatHistoryService
@@ -64,9 +65,19 @@ async def get_history_service_ws(
     return ChatHistoryService(redis, settings.max_history_messages)
 
 
-async def get_llm_client() -> VLLMClient:
-    """Get vLLM client instance."""
+async def get_llm_client() -> VLLMClient | QwenAgentClient:
+    """Get LLM client instance (QwenAgentClient if enabled, else VLLMClient)."""
     settings = get_settings()
+
+    if settings.qwen_agent_enabled:
+        return QwenAgentClient(
+            base_url=settings.vllm_base_url,
+            api_key=settings.vllm_api_key,
+            model=settings.vllm_model,
+            max_context=settings.vllm_max_model_len,
+            timeout=settings.vllm_timeout,
+        )
+
     return VLLMClient(
         base_url=settings.vllm_base_url,
         api_key=settings.vllm_api_key,

@@ -25,14 +25,17 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://localhost:8000/v1"
     vllm_api_key: str = "EMPTY"
     vllm_model: str = "Qwen3-30B-A3B-Instruct-AWQ-4bit"
-    vllm_max_model_len: int = 26000
+    vllm_max_model_len: int = 46000  # Must match vLLM server's --max-model-len
     vllm_timeout: float = 120.0
     vllm_temperature: float = 0.6  # Qwen3 recommended
 
+    # Qwen-Agent (enable for proper parallel tool calling)
+    qwen_agent_enabled: bool = True
+
     @property
     def vllm_max_tokens(self) -> int:
-        """Max tokens for completion - must leave room for input within context limit."""
-        return 12288
+        """Dynamic max tokens - 35% of context length for completion."""
+        return int(self.vllm_max_model_len * 0.35)
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

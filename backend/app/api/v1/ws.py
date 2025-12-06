@@ -21,6 +21,7 @@ from app.services.functions.registry import get_function_registry
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
 from app.services.llm.prompts import get_system_prompt
+from app.services.llm.qwen_client import QwenAgentClient
 from app.services.llm.token_utils import calculate_max_tokens
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
@@ -47,7 +48,7 @@ class WebSocketChatHandler:
         websocket: WebSocket,
         session_manager: SessionManager,
         history_service: ChatHistoryService,
-        llm_client: VLLMClient,
+        llm_client: VLLMClient | QwenAgentClient,
     ):
         self.websocket = websocket
         self.session_manager = session_manager
@@ -343,21 +344,25 @@ class WebSocketChatHandler:
                     logger.info(
                         f"[{request_id}] Executing {len(parsed_calls)} tool calls in parallel"
                     )
-                    batch_calls = [(name, args) for name, args, _ in parsed_calls]
+                    batch_calls = [(call[0], call[1]) for call in parsed_calls]
                     results = await self.function_executor.execute_batch(batch_calls)
 
                     # Process results and add to messages
-                    for (func_name, _, tc_id), result in zip(parsed_calls, results):
+                    for i, result in enumerate(results):
+                        func_name = parsed_calls[i][0]  # Extract function name from tuple
+
                         # Format result for LLM
                         if result.success:
                             result_content = json.dumps(result.result, default=str)
                         else:
                             result_content = json.dumps({"error": result.error})
 
-                        # Add tool result message
+                        # Add function result message (Qwen-Agent format, NOT OpenAI format)
+                        # Qwen-Agent uses role='function' with 'name' field
+                        # OpenAI uses role='tool' with 'tool_call_id' - this does NOT work with Qwen-Agent
                         llm_messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc_id,
+                            "role": "function",
+                            "name": func_name,
                             "content": result_content,
                         })
 
@@ -430,7 +435,7 @@ async def websocket_chat(
     websocket: WebSocket,
     session_manager: SessionManager = Depends(get_session_manager_ws),
     history_service: ChatHistoryService = Depends(get_history_service_ws),
-    llm_client: VLLMClient = Depends(get_llm_client),
+    llm_client: VLLMClient | QwenAgentClient = Depends(get_llm_client),
 ):
     """
     WebSocket endpoint for bidirectional chat streaming.

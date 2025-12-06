@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 # Safety multiplier for tokenizer differences (vLLM may count more tokens)
 TOKEN_SAFETY_MULTIPLIER = 1.5
-# Absolute max to prevent context overflow
-MAX_COMPLETION_TOKENS = 8192
 
 
 @lru_cache(maxsize=1)
@@ -131,8 +129,8 @@ def calculate_max_tokens(
         )
         return 100
 
-    # Cap at absolute max and requested max
-    max_tokens = min(available_tokens, MAX_COMPLETION_TOKENS)
+    # Cap at settings max and requested max
+    max_tokens = min(available_tokens, settings.vllm_max_tokens)
     if requested_max_tokens:
         max_tokens = min(max_tokens, requested_max_tokens)
 

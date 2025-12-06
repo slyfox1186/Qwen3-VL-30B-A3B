@@ -17,7 +17,7 @@ CORE: Precise - State confidence if <95%, Do not make up data or hallucinate; al
 
 RESPONSE_STANDARDS = """## HOW TO RESPOND:
 1. ACCURACY: Verify facts. [CONFIDENCE: X%] if <95%. Missing data -> "Need: [specific]"
-2. STRUCTURE: Use proper markdown formatting and tables for displaying structured data. Optimize the logical flow. Do **NOT** use emojis.
+2. STRUCTURE: Use proper markdown formatting and tables for displaying structured data; optimize the logical flow; do **NOT** use emojis.
 3. AMBIGUITY: Only ask for clarification if you are completely unable to infer the intent of the user; for 99% of cases you should proceed with processing the user's query and not ask for clarification.
 4. RESPONSIVENESS: As soon as you have found a quality and accurate response you must **IMMEDIATELY STOP THINKING** and return it; wasting time is **STRICTLY** forbidden."""
 

@@ -464,6 +464,8 @@ def main():
                 env["PYTHONWARNINGS"] = "ignore"
                 env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
+                # NOTE: Tool call parsing is handled by Qwen-Agent, not vLLM
+                # Do NOT use --enable-auto-tool-choice or --tool-call-parser with Qwen-Agent
                 vllm_cmd = [
                     str(CONDA_PYTHON),
                     "-m",
@@ -488,9 +490,6 @@ def main():
                     "--enable-chunked-prefill",
                     "--kv-cache-dtype",
                     "fp8",
-                    "--enable-auto-tool-choice",
-                    "--tool-call-parser",
-                    "hermes",
                     "--reasoning-parser",
                     "deepseek_r1",
                 ]
