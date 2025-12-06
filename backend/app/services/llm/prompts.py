@@ -36,18 +36,8 @@ MEMORY_PROTOCOL = """## MEMORY OPERATIONS:
 # TOOL CALLING RULES
 # =============================================================================
 
-TOOL_CALLING = """## TOOL CALLING - CRITICAL:
-**BATCH ALL TOOL CALLS IN ONE RESPONSE.** Do NOT plan or list calls sequentially.
-
-WRONG (sequential planning):
-"I'll call tool1 first, then tool2, then tool3..."
-
-CORRECT (batch all at once):
-Output ALL independent tool_calls in a SINGLE response. The system executes them in parallel.
-
-- Multiple independent operations = ONE response with ALL tool_calls
-- NEVER iterate through calls one-by-one in your reasoning
-- If 5 memories need saving, output 5 tool_calls simultaneously"""
+TOOL_CALLING = """## TOOLS:
+Output ALL `tool_calls` in ONE response. Never sequential. Parallel execution enabled."""
 
 # =============================================================================
 # ERROR HANDLING
