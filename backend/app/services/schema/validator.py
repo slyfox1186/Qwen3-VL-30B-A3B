@@ -11,7 +11,7 @@ from typing import Any
 
 from jsonschema import Draft7Validator
 
-from app.services.llm.prompts import SCHEMA_INSTRUCTION_TEMPLATE, SCHEMA_RETRY_PROMPT
+from app.services.llm.prompts import SCHEMA_INSTRUCTION_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -172,34 +172,6 @@ class SchemaValidator:
             errors.append(f"Schema error at '{path}': {error.message}")
 
         return data, errors
-
-    def generate_retry_prompt(
-        self,
-        original_prompt: str,
-        schema: dict[str, Any],
-        errors: list[str],
-        raw_response: str | None = None,
-    ) -> str:
-        """
-        Generate a retry prompt that includes validation errors.
-
-        Args:
-            original_prompt: The original user prompt
-            schema: The target JSON schema
-            errors: List of validation errors from previous attempt
-            raw_response: The invalid response (for context)
-
-        Returns:
-            A new prompt instructing the model to fix the errors
-        """
-        schema_str = json.dumps(schema, indent=2)
-        errors_str = "\n".join(f"- {e}" for e in errors)
-
-        return SCHEMA_RETRY_PROMPT.format(
-            errors=errors_str,
-            schema=schema_str,
-            original_prompt=original_prompt,
-        )
 
     def get_schema_instruction(self, schema: dict[str, Any]) -> str:
         """

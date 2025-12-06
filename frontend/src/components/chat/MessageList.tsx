@@ -9,9 +9,9 @@ import UserMessage from './UserMessage';
 import AIMessage from './AIMessage';
 import QwenLogo from './QwenLogo';
 
-// Threshold in pixels - if user is within this distance of bottom, auto-scroll continues
-// Using a very low threshold (20px) so even a tiny scroll-up breaks auto-scroll
-const SCROLL_THRESHOLD = 20;
+// Threshold in pixels - if user scrolls more than this distance from bottom, auto-scroll stops
+// Using 150px to give users a clear escape from autoscroll
+const SCROLL_THRESHOLD = 150;
 
 interface MessageListProps {
   messages: Message[];
@@ -67,21 +67,31 @@ export default function MessageList({
   }, [scrollToBottom]);
 
   // Handle user scroll - detect if they scrolled away from bottom
+  // Once user scrolls away during streaming, stay "scrolled away" until streaming stops
   useEffect(() => {
     const scrollContainer = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
     if (!scrollContainer) return;
 
     let lastScrollTop = scrollContainer.scrollTop;
+    let lastScrollTime = 0;
 
     const handleScroll = () => {
+      const now = Date.now();
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
-      const scrolledUp = scrollTop < lastScrollTop;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const scrolledUp = scrollTop < lastScrollTop - 5; // 5px tolerance for noise
+
       lastScrollTop = scrollTop;
 
-      if (scrolledUp && !isNearBottom) {
+      // If user actively scrolls up (not just smooth scroll animation), mark as scrolled away
+      if (scrolledUp && distanceFromBottom > SCROLL_THRESHOLD) {
         userScrolledAwayRef.current = true;
-      } else if (isNearBottom) {
+        lastScrollTime = now;
+      }
+
+      // Only re-enable autoscroll if user manually scrolls to bottom AND we're not mid-scroll
+      // (wait 200ms after last scroll to distinguish user intent from animation)
+      if (distanceFromBottom < 30 && now - lastScrollTime > 200) {
         userScrolledAwayRef.current = false;
       }
     };

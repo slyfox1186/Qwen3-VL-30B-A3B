@@ -290,18 +290,120 @@ async def list_all_memories(
         return {"success": False, "error": str(e)}
 
 
+async def defrag_memories() -> dict[str, Any]:
+    """
+    Analyze all memories and identify redundancies for cleanup.
+
+    Returns a defragmentation report with:
+    - Groups of semantically similar memories
+    - Duplicate or near-duplicate keys
+    - Recommendations for consolidation
+
+    The LLM should review this report and use delete_memory/update_memory
+    to consolidate redundant entries.
+
+    Returns:
+        Defragmentation analysis with groups of related memories
+    """
+    service = get_memory_service()
+
+    try:
+        # Get all memories
+        all_memories = await service.list_all_memories(limit=50, offset=0)
+
+        if not all_memories:
+            return {
+                "success": True,
+                "total_memories": 0,
+                "redundancy_groups": [],
+                "recommendations": ["No memories to analyze."],
+            }
+
+        # Group memories by semantic similarity
+        redundancy_groups: list[dict[str, Any]] = []
+        processed_ids: set[str] = set()
+
+        for memory in all_memories:
+            if memory["id"] in processed_ids:
+                continue
+
+            # Find similar memories to this one
+            similar = await service.find_similar(
+                content=memory["content"],
+                threshold=0.6,  # Lower threshold to catch more potential duplicates
+                limit=10,
+            )
+
+            # Filter to only include memories not yet processed (exclude self)
+            group_members = []
+            for s in similar:
+                if s.id != memory["id"] and s.id not in processed_ids:
+                    group_members.append({
+                        "memory_id": s.id,
+                        "key": s.memory_key,
+                        "content": s.content,
+                        "similarity": round(s.score, 3),
+                        "importance": s.importance,
+                    })
+
+            if group_members:
+                # This memory has similar entries - create a group
+                group = {
+                    "primary": {
+                        "memory_id": memory["id"],
+                        "key": memory["memory_key"],
+                        "content": memory["content"],
+                        "importance": memory["importance"],
+                    },
+                    "similar": group_members,
+                    "group_size": len(group_members) + 1,
+                }
+                redundancy_groups.append(group)
+
+                # Mark all as processed
+                processed_ids.add(memory["id"])
+                for m in group_members:
+                    processed_ids.add(m["memory_id"])
+
+        # Generate recommendations
+        recommendations = []
+        if redundancy_groups:
+            recommendations.append(
+                f"Found {len(redundancy_groups)} groups of similar memories that may need consolidation."
+            )
+            recommendations.append(
+                "Review each group and decide: (1) keep the most comprehensive entry, "
+                "(2) merge content into one entry using update_memory, "
+                "(3) delete redundant entries using delete_memory."
+            )
+            recommendations.append(
+                "Prefer standardized key names: user_name, user_occupation, user_location, etc."
+            )
+        else:
+            recommendations.append("No redundant memories detected. Memory store is clean.")
+
+        return {
+            "success": True,
+            "total_memories": len(all_memories),
+            "redundancy_groups": redundancy_groups,
+            "groups_found": len(redundancy_groups),
+            "recommendations": recommendations,
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def get_memory_tools() -> list[FunctionDefinition]:
     """Get all memory tool definitions for registration."""
     return [
         FunctionDefinition(
             name="prescan_memories",
-            description=(
-                "Pre-scan existing memories BEFORE saving new information. "
-                "ALWAYS use this before save_memory to: (1) check for duplicate memories, "
-                "(2) see if a key already exists, (3) get recommendations on whether to "
-                "create new, update existing, or skip. Returns similar memories with "
-                "similarity scores and recommended action."
-            ),
+            description="""Pre-scan existing memories BEFORE saving new information.
+ALWAYS use this before save_memory to: (1) check for duplicate memories,
+(2) see if a key already exists, (3) get recommendations on whether to
+create new, update existing, or skip. Returns similar memories with
+similarity scores and recommended action.""",
             parameters=[
                 FunctionParameter(
                     name="content",
@@ -329,14 +431,12 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="save_memory",
-            description=(
-                "Save important information about the user to long-term memory. "
-                "BEST PRACTICE: Use prescan_memories first to check for duplicates. "
-                "Use when: (1) user shares personal information like name, occupation, or preferences, "
-                "(2) user explicitly asks to remember something, "
-                "(3) user states important facts about themselves. "
-                "Always confirm what was saved to the user."
-            ),
+            description="""Save important information about the user to long-term memory.
+BEST PRACTICE: Use prescan_memories first to check for duplicates.
+Use when: (1) user shares personal information like name, occupation, or preferences,
+(2) user explicitly asks to remember something,
+(3) user states important facts about themselves.
+Always confirm what was saved to the user.""",
             parameters=[
                 FunctionParameter(
                     name="content",
@@ -346,20 +446,16 @@ def get_memory_tools() -> list[FunctionDefinition]:
                 FunctionParameter(
                     name="key",
                     type="string",
-                    description=(
-                        "Optional key for facts in snake_case. Examples: 'user_name', "
-                        "'user_preferred_name', 'user_occupation', 'user_preference_language'. "
-                        "Use keys for facts that should be easily retrievable and updatable."
-                    ),
+                    description="""Optional key for facts in snake_case. Examples: 'user_name',
+'user_preferred_name', 'user_occupation', 'user_preference_language'.
+Use keys for facts that should be easily retrievable and updatable.""",
                     required=False,
                 ),
                 FunctionParameter(
                     name="importance",
                     type="string",
-                    description=(
-                        "Priority level: 'high' for core identity (name), "
-                        "'medium' for preferences, 'low' for minor facts. Default: medium"
-                    ),
+                    description="""Priority level: 'high' for core identity (name),
+'medium' for preferences, 'low' for minor facts. Default: medium""",
                     required=False,
                     default="medium",
                     enum=["low", "medium", "high"],
@@ -372,12 +468,10 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="update_memory",
-            description=(
-                "Update an existing memory with new content. Use this instead of "
-                "save_memory when you want to modify existing information rather than "
-                "create a duplicate. The embedding will be regenerated automatically. "
-                "Get the memory_id from prescan_memories or list_all_memories."
-            ),
+            description="""Update an existing memory with new content. Use this instead of
+save_memory when you want to modify existing information rather than
+create a duplicate. The embedding will be regenerated automatically.
+Get the memory_id from prescan_memories or list_all_memories.""",
             parameters=[
                 FunctionParameter(
                     name="memory_id",
@@ -397,13 +491,11 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="delete_memory",
-            description=(
-                "Delete a memory that is outdated, incorrect, or no longer relevant. "
-                "Use when: (1) user explicitly asks to forget something, "
-                "(2) information is confirmed to be wrong, "
-                "(3) cleaning up duplicate memories found via prescan. "
-                "Can delete by memory_id OR by key (for keyed facts)."
-            ),
+            description="""Delete a memory that is outdated, incorrect, or no longer relevant.
+Use when: (1) user explicitly asks to forget something,
+(2) information is confirmed to be wrong,
+(3) cleaning up duplicate memories found via prescan.
+Can delete by memory_id OR by key (for keyed facts).""",
             parameters=[
                 FunctionParameter(
                     name="memory_id",
@@ -425,21 +517,17 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="search_memories",
-            description=(
-                "Search long-term memory for relevant information using semantic similarity. "
-                "Use when: (1) you need user context to personalize a response, "
-                "(2) user references something from the past, "
-                "(3) before making personalized recommendations. "
-                "Do NOT search on every message - only when context is genuinely needed."
-            ),
+            description="""Search long-term memory for relevant information using semantic similarity.
+Use when: (1) you need user context to personalize a response,
+(2) user references something from the past,
+(3) before making personalized recommendations.
+Do NOT search on every message - only when context is genuinely needed.""",
             parameters=[
                 FunctionParameter(
                     name="query",
                     type="string",
-                    description=(
-                        "Natural language description of what to search for. "
-                        "Example: 'What programming languages does the user prefer?'"
-                    ),
+                    description="""Natural language description of what to search for.
+Example: 'What programming languages does the user prefer?'""",
                 ),
                 FunctionParameter(
                     name="limit",
@@ -456,12 +544,10 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="list_facts",
-            description=(
-                "List all stored key-value facts about the user (only keyed memories). "
-                "Use when: (1) user asks 'what do you know about me?', "
-                "(2) quickly checking core user facts. "
-                "For a complete view including semantic memories, use list_all_memories."
-            ),
+            description="""List all stored key-value facts about the user (only keyed memories).
+Use when: (1) user asks 'what do you know about me?',
+(2) quickly checking core user facts.
+For a complete view including semantic memories, use list_all_memories.""",
             parameters=[],
             handler=list_facts,
             is_async=True,
@@ -470,13 +556,11 @@ def get_memory_tools() -> list[FunctionDefinition]:
         ),
         FunctionDefinition(
             name="list_all_memories",
-            description=(
-                "List ALL memories including both keyed facts AND semantic memories. "
-                "Use when: (1) performing a complete memory audit, "
-                "(2) user wants to see everything stored about them, "
-                "(3) cleaning up or reviewing memory database. "
-                "Supports pagination with limit and offset."
-            ),
+            description="""List ALL memories including both keyed facts AND semantic memories.
+Use when: (1) performing a complete memory audit,
+(2) user wants to see everything stored about them,
+(3) cleaning up or reviewing memory database.
+Supports pagination with limit and offset.""",
             parameters=[
                 FunctionParameter(
                     name="limit",
@@ -494,6 +578,15 @@ def get_memory_tools() -> list[FunctionDefinition]:
                 ),
             ],
             handler=list_all_memories,
+            is_async=True,
+            category="memory",
+            cacheable=False,
+        ),
+        FunctionDefinition(
+            name="defrag_memories",
+            description="""Find redundant memories and consolidate them. Delete duplicates, keep the better quality and most accurate version of each fact.""",
+            parameters=[],
+            handler=defrag_memories,
             is_async=True,
             category="memory",
             cacheable=False,
