@@ -22,7 +22,6 @@ QWEN_FUNCTION_PATTERN = re.compile(
     r"✿FUNCTION✿:\s*(\w+)\s*\n✿ARGS✿:\s*", re.DOTALL
 )
 
-
 def extract_balanced_json(text: str, start_index: int) -> str | None:
     """Extract JSON object with balanced brace matching."""
     depth = 0
@@ -104,9 +103,9 @@ class QwenAgentClient:
                 "top_p": 0.95,
                 "top_k": 20,
                 "max_tokens": self._default_max_tokens,
-                # Disable thinking mode to get cleaner responses
+                # Enable thinking mode for reasoning visibility
                 "extra_body": {
-                    "chat_template_kwargs": {"enable_thinking": False}
+                    "chat_template_kwargs": {"enable_thinking": True}
                 },
             },
         })
@@ -247,13 +246,15 @@ class QwenAgentClient:
         def run_sync():
             """Run synchronous qwen-agent streaming in thread pool."""
             full_content = ""
+            full_reasoning = ""
             last_content_len = 0  # Track what we've already sent
+            last_reasoning_len = 0  # Track reasoning content sent
             tool_calls_seen: set[str] = set()
             iteration_count = 0
 
             def process_responses(responses_list: list) -> None:
                 """Process a list of response messages."""
-                nonlocal full_content, last_content_len
+                nonlocal full_content, full_reasoning, last_content_len, last_reasoning_len
 
                 if not responses_list:
                     return
@@ -285,7 +286,23 @@ class QwenAgentClient:
                                 ))
                                 logger.info(f"Received function_call: {name}")
 
-                    # Handle content in message
+                    # Handle reasoning_content (thinking) - Qwen-Agent returns this separately
+                    # CRITICAL: Qwen-Agent streaming sends accumulated content, not deltas
+                    if "reasoning_content" in msg and msg["reasoning_content"]:
+                        reasoning = msg["reasoning_content"]
+                        full_reasoning = reasoning
+
+                        # Only send delta (new reasoning since last send)
+                        if len(reasoning) > last_reasoning_len:
+                            delta = reasoning[last_reasoning_len:]
+                            last_reasoning_len = len(reasoning)
+
+                            queue.put_nowait((
+                                "chunk",
+                                {"type": "reasoning", "content": delta},
+                            ))
+
+                    # Handle content in message (final response)
                     # CRITICAL: Qwen-Agent streaming sends accumulated content, not deltas
                     # We must only send the NEW characters (delta) to avoid duplicates
                     if "content" in msg and msg["content"]:
