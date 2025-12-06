@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Message, SearchResult } from '@/types/api';
+import { Message } from '@/types/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { motion } from 'framer-motion';
 
@@ -18,12 +18,9 @@ interface MessageListProps {
   isStreaming: boolean;
   currentContent: string;
   currentThought?: string;
-  currentSearchResults?: SearchResult[];
-  currentSearchQuery?: string;
-  onImageReview?: (imageUrl: string) => void;
   editingMessageId: string | null;
   onEditMessage?: (messageId: string) => void;
-  onSaveEdit?: (messageId: string, content: string, images: string[]) => void;
+  onSaveEdit?: (messageId: string, content: string) => void;
   onCancelEdit?: () => void;
   onRegenerate?: (messageId: string) => void;
 }
@@ -33,9 +30,6 @@ export default function MessageList({
   isStreaming,
   currentContent,
   currentThought,
-  currentSearchResults,
-  currentSearchQuery,
-  onImageReview,
   editingMessageId,
   onEditMessage,
   onSaveEdit,
@@ -104,7 +98,7 @@ export default function MessageList({
   useEffect(() => {
     if (userScrolledAwayRef.current) return;
     scrollToBottom();
-  }, [messages, currentContent, currentThought, currentSearchResults, scrollToBottom]);
+  }, [messages, currentContent, currentThought, scrollToBottom]);
 
   // Keep scrolling when thinking bubble is open and content updates (but respect user scroll-away)
   useEffect(() => {
@@ -139,7 +133,6 @@ export default function MessageList({
               key={msg.id}
               message={msg}
               isGlobalStreaming={isStreaming}
-              onImageReview={onImageReview}
               onRegenerate={onRegenerate}
               onThinkingToggle={handleThinkingToggle}
             />
@@ -154,12 +147,9 @@ export default function MessageList({
               role: 'assistant',
               content: currentContent,
               thought: currentThought,
-              search_results: currentSearchResults,
-              search_query: currentSearchQuery,
               created_at: new Date().toISOString(),
             }}
             isStreaming={true}
-            onImageReview={onImageReview}
             onThinkingToggle={handleThinkingToggle}
           />
         )}

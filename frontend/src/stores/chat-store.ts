@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Message, SearchResult } from '@/types/api';
+import { Message } from '@/types/api';
 
 /**
  * Streaming progress information for real-time updates.
@@ -17,8 +17,6 @@ interface ChatState {
   isStreaming: boolean;
   currentContent: string; // Accumulates content during stream
   currentThought: string; // Accumulates thought during stream
-  currentSearchResults: SearchResult[] | undefined;
-  currentSearchQuery: string | undefined;
   error: string | null;
   editingMessageId: string | null;
 
@@ -31,7 +29,6 @@ interface ChatState {
   setStreaming: (isStreaming: boolean) => void;
   appendContent: (delta: string) => void;
   appendThought: (delta: string) => void;
-  setSearchResults: (results: SearchResult[], query?: string) => void;
   resetCurrentStream: () => void;
   setError: (error: string | null) => void;
   setEditingMessageId: (id: string | null) => void;
@@ -45,8 +42,6 @@ export const useChatStore = create<ChatState>((set) => ({
   isStreaming: false,
   currentContent: '',
   currentThought: '',
-  currentSearchResults: undefined,
-  currentSearchQuery: undefined,
   error: null,
   editingMessageId: null,
   streamProgress: null,
@@ -57,12 +52,9 @@ export const useChatStore = create<ChatState>((set) => ({
   setStreaming: (isStreaming) => set({ isStreaming }),
   appendContent: (delta) => set((state) => ({ currentContent: state.currentContent + delta })),
   appendThought: (delta) => set((state) => ({ currentThought: state.currentThought + delta })),
-  setSearchResults: (results, query) => set({ currentSearchResults: results, currentSearchQuery: query }),
   resetCurrentStream: () => set({
     currentContent: '',
     currentThought: '',
-    currentSearchResults: undefined,
-    currentSearchQuery: undefined,
     streamProgress: null,
     isCancelling: false,
   }),

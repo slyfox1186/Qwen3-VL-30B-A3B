@@ -10,8 +10,6 @@ export interface Session {
 export interface SearchResult {
   title: string;
   link: string;
-  thumbnail?: string;
-  original_image?: string;
   snippet?: string;
 }
 
@@ -20,9 +18,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   thought?: string;
-  images?: string[]; // Base64 strings or URLs (input)
-  search_results?: SearchResult[]; // Images found by search
-  search_query?: string; // Query used for search
+  search_results?: SearchResult[]; // LLM web search results
+  search_query?: string; // Query used for web search
   created_at: string;
   // Thread system fields
   thread_id?: string; // ID of thread this message belongs to
@@ -41,10 +38,6 @@ export interface Thread {
 
 export interface ChatRequest {
   message: string;
-  images?: {
-    data: string; // base64
-    media_type?: string;
-  }[];
   max_tokens?: number;
   temperature?: number;
 }
@@ -54,7 +47,6 @@ export interface ChatResponseSync {
   session_id: string;
   content: string;
   thought?: string;
-  search_results?: SearchResult[];
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -70,7 +62,6 @@ export type SSEEventType =
   | 'content_start'
   | 'content_delta'
   | 'content_end'
-  | 'images'
   | 'done'
   | 'error';
 
@@ -79,8 +70,6 @@ export interface SSEEvent {
   request_id?: string;
   content?: string;
   thought?: string;
-  images?: SearchResult[];
-  query?: string;
   error?: string;
   code?: string;
   usage?: {

@@ -12,7 +12,7 @@ import { Message } from '@/types/api';
 export interface ExportOptions {
   format: 'markdown' | 'json' | 'pdf';
   includeThoughts: boolean;
-  includeImages: boolean;
+  includeSearchResults: boolean;
   includeTimestamps: boolean;
   sessionTitle?: string;
 }
@@ -93,27 +93,17 @@ export function exportToMarkdown(
     lines.push(msg.content || '');
     lines.push('');
 
-    // Images
-    if (options.includeImages && msg.images && msg.images.length > 0) {
-      lines.push('**Attached Images:**');
-      msg.images.forEach((img, i) => {
-        if (img.startsWith('data:')) {
-          lines.push(`- Image ${i + 1}: (embedded data URL)`);
-        } else {
-          lines.push(`- ![Image ${i + 1}](${img})`);
-        }
-      });
-      lines.push('');
-    }
-
-    // Search results
-    if (msg.search_results && msg.search_results.length > 0) {
-      lines.push('**Related Images:**');
-      msg.search_results.forEach((result, i) => {
-        if (result.title) {
-          lines.push(`- [${result.title}](${result.link || result.thumbnail})`);
-        } else {
-          lines.push(`- [Image ${i + 1}](${result.link || result.thumbnail})`);
+    // Search results from LLM web search
+    if (options.includeSearchResults && msg.search_results && msg.search_results.length > 0) {
+      if (msg.search_query) {
+        lines.push(`**Search Query:** ${msg.search_query}`);
+      }
+      lines.push('**Search Results:**');
+      msg.search_results.forEach((result, i: number) => {
+        const title = result.title || `Result ${i + 1}`;
+        lines.push(`- [${title}](${result.link})`);
+        if (result.snippet) {
+          lines.push(`  > ${result.snippet}`);
         }
       });
       lines.push('');
@@ -151,7 +141,7 @@ export function exportToJSON(
     messageCount: messages.length,
     options: {
       includeThoughts: options.includeThoughts,
-      includeImages: options.includeImages,
+      includeSearchResults: options.includeSearchResults,
       includeTimestamps: options.includeTimestamps,
     },
     messages: messages.map((msg) => ({
@@ -160,9 +150,8 @@ export function exportToJSON(
       content: msg.content,
       ...(options.includeThoughts && msg.thought ? { thought: msg.thought } : {}),
       ...(options.includeTimestamps && msg.created_at ? { created_at: msg.created_at } : {}),
-      ...(options.includeImages && msg.images?.length ? { images: msg.images } : {}),
-      ...(msg.search_results?.length ? { search_results: msg.search_results } : {}),
-      ...(msg.search_query ? { search_query: msg.search_query } : {}),
+      ...(options.includeSearchResults && msg.search_results?.length ? { search_results: msg.search_results } : {}),
+      ...(options.includeSearchResults && msg.search_query ? { search_query: msg.search_query } : {}),
     })),
   };
 

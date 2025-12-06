@@ -1,12 +1,12 @@
-# Last Updated: 2025-12-03
+# Last Updated: 2025-12-06
 
 ## Purpose
-Reusable React components: chat interface, UI primitives (shadcn), and upload handling.
+Reusable React components: chat interface and UI primitives (shadcn).
 
 ## Key Files
-- `chat/` - Chat UI components (ChatContainer, MessageList, ChatInput, AIMessage, UserMessage, Sidebar, ImageViewer)
+- `chat/` - Chat UI components (ChatContainer, MessageList, ChatInput, AIMessage, UserMessage, Sidebar)
 - `ui/` - Radix UI primitives (button, input, card, scroll-area, avatar, skeleton, textarea, sheet, tooltip, collapsible)
-- `upload/` - Image upload components
+- `search/` - Search panel for conversation history
 
 ## Dependencies/Relations
 Used by `app/page.tsx`. Depends on `hooks/use-chat`, `stores/`, `types/`, `lib/utils`.

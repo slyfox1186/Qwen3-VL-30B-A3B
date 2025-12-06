@@ -1,4 +1,4 @@
-# VLM Chat API Dependencies
+# LLM Chat API Dependencies
 
 # Web Framework
 fastapi>=0.109.0
@@ -20,9 +20,6 @@ tiktoken>=0.7.0
 
 # SSE Streaming
 sse-starlette>=2.0.0
-
-# Image Processing
-pillow>=10.2.0
 
 # Environment
 python-dotenv>=1.0.0
@@ -49,6 +46,6 @@ sentence-transformers>=2.3.0
 asyncpg>=0.29.0
 pgvector>=0.3.0
 
-# Document Processing (optional - for multi-modal)
+# Document Processing (optional)
 pypdf>=4.0.0
 python-docx>=1.1.0

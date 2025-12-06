@@ -10,7 +10,6 @@ import SearchPanel from '@/components/search/SearchPanel';
 import { useSearch, SearchMatch } from '@/hooks/use-search';
 import { useSessionStore } from '@/stores/session-store';
 import { useUIStore } from '@/stores/ui-store';
-import { useChatStore } from '@/stores/chat-store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { PanelLeftOpen, PanelLeftClose, Keyboard, X, Search, Download } from 'lucide-react';
@@ -28,8 +27,6 @@ export default function ChatContainer() {
     isStreaming,
     currentContent,
     currentThought,
-    currentSearchResults,
-    currentSearchQuery,
     sendMessage,
     stopGeneration,
     loadHistory,
@@ -287,69 +284,28 @@ export default function ChatContainer() {
     clearSession();
   };
 
-  const handleImageReview = useCallback(async (imageUrl: string) => {
-    // Check streaming state from store (not closure) to avoid stale value
-    if (useChatStore.getState().isStreaming) {
-      toast.error('Please wait for the current response to complete');
-      return;
-    }
-
-    try {
-      toast.info('Fetching image for review...');
-
-      // Use backend proxy to bypass CORS restrictions
-      const proxyUrl = `${API_BASE_URL}/images/proxy`;
-      console.log(`Fetching image from proxy: ${proxyUrl} for url: ${imageUrl}`);
-
-      const response = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: imageUrl }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const message = errorData.detail?.error?.message
-          || errorData.error?.message
-          || `Failed to fetch image: ${response.status} ${response.statusText}`;
-        toast.error(message);
-        return;
-      }
-
-      const data = await response.json();
-
-      // sendMessage has its own atomic ref-based guard against concurrent calls
-      // If a request is already in progress, sendMessage will safely reject
-      sendMessage('Describe this image in GREAT DETAIL.', [data.data_url]);
-    } catch (error) {
-      console.error('Error fetching image for review:', error);
-      const message = error instanceof Error ? error.message : 'Failed to fetch image';
-      toast.error(message);
-    }
-  }, [sendMessage]);
-
   return (
     <div className="app-layout">
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setSidebarOpen(false)}
         onNewChat={handleNewChat}
       />
 
       <div className="main-wrapper">
         <header className="chat-header">
           <div className="header-left">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={toggleSidebar}
               className="toggle-sidebar-btn"
             >
               {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
             </Button>
-            
+
             <h1 className="app-title">
-              Qwen3-VL Chat
+              Qwen3 Chat
             </h1>
             <div className="header-divider" />
             <div className="status-indicator">
@@ -398,23 +354,20 @@ export default function ChatContainer() {
             )}
           </div>
         </header>
-        
+
         <main className="chat-content-area">
           <MessageList
             messages={messages}
             isStreaming={isStreaming}
             currentContent={currentContent}
             currentThought={currentThought}
-            currentSearchResults={currentSearchResults}
-            currentSearchQuery={currentSearchQuery}
-            onImageReview={handleImageReview}
             editingMessageId={editingMessageId}
             onEditMessage={setEditingMessageId}
             onSaveEdit={editMessage}
             onCancelEdit={() => setEditingMessageId(null)}
             onRegenerate={regenerateResponse}
           />
-          
+
         </main>
 
         <div className="input-area-wrapper">

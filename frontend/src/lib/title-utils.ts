@@ -3,11 +3,8 @@
  * Cleans and truncates the message to create a suitable title.
  */
 export function generateTitleFromMessage(message: string): string {
-  // Remove image attachment prefix if present
-  const cleanMessage = message.replace(/^\[Image attached\]\n?/, '');
-
   // Remove excessive whitespace and normalize
-  const normalized = cleanMessage.trim().replace(/\s+/g, ' ');
+  const normalized = message.trim().replace(/\s+/g, ' ');
 
   if (!normalized) {
     return 'New conversation';

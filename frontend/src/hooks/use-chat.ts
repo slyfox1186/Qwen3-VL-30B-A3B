@@ -10,7 +10,7 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { useChatStore } from '@/stores/chat-store';
 import { useSessionStore } from '@/stores/session-store';
-import { Message, SearchResult } from '@/types/api';
+import { Message } from '@/types/api';
 import { v4 as uuidv4 } from 'uuid';
 import { generateTitleFromMessage } from '@/lib/title-utils';
 
@@ -31,12 +31,9 @@ export function useChat() {
     setStreaming,
     appendContent,
     appendThought,
-    setSearchResults,
     resetCurrentStream,
     currentContent,
     currentThought,
-    currentSearchResults,
-    currentSearchQuery,
     setError: setChatError,
     editingMessageId,
     setEditingMessageId,
@@ -117,15 +114,11 @@ export function useChat() {
         content: string;
         thought?: string;
         created_at: string;
-        search_results?: SearchResult[];
-        search_query?: string;
       }) => ({
         id: msg.id,
         role: msg.role,
         content: msg.content,
         thought: msg.thought,
-        search_results: msg.search_results,
-        search_query: msg.search_query,
         created_at: msg.created_at,
       }));
       setMessages(historyMessages);
@@ -136,8 +129,8 @@ export function useChat() {
     }
   }, [setMessages]);
 
-  const sendMessage = useCallback(async (content: string, images: string[] = []) => {
-    console.log('[sendMessage] Called with:', { content: content.slice(0, 30), imagesCount: images.length });
+  const sendMessage = useCallback(async (content: string) => {
+    console.log('[sendMessage] Called with:', { content: content.slice(0, 30) });
 
     if (requestInProgressRef.current) {
       console.warn('[sendMessage] BLOCKED: request already in progress');
@@ -168,7 +161,6 @@ export function useChat() {
       id: userMsgId,
       role: 'user',
       content,
-      images,
       created_at: new Date().toISOString(),
     };
     addMessage(userMessage);
@@ -178,16 +170,7 @@ export function useChat() {
       // Try WebSocket first
       const ws = await connectWebSocket();
 
-      // Process images
-      const processedImages = images.map((img) => {
-        const data = img.split(',')[1] || img;
-        return { data };
-      });
-
       // Set up message handler
-      let capturedSearchResults: SearchResult[] | undefined;
-      let capturedSearchQuery: string | undefined;
-
       const handleMessage = (event: MessageEvent) => {
         const data: WebSocketMessage = JSON.parse(event.data);
 
@@ -214,23 +197,15 @@ export function useChat() {
             if (data.content) appendThought(data.content as string);
             break;
 
-          case 'images':
-            if (data.images) {
-              capturedSearchResults = data.images as SearchResult[];
-              capturedSearchQuery = data.query as string;
-              setSearchResults(capturedSearchResults, capturedSearchQuery);
-            }
-            break;
-
           case 'done':
             console.log('[WebSocket] Stream complete:', data);
-            finalizeMessage(capturedSearchResults, capturedSearchQuery);
+            finalizeMessage();
             cleanup();
             break;
 
           case 'cancelled':
             console.log('[WebSocket] Stream cancelled:', data);
-            finalizeMessage(capturedSearchResults, capturedSearchQuery, true);
+            finalizeMessage(true);
             cleanup();
             break;
 
@@ -241,11 +216,7 @@ export function useChat() {
         }
       };
 
-      const finalizeMessage = (
-        searchResults?: SearchResult[],
-        searchQuery?: string,
-        wasCancelled = false
-      ) => {
+      const finalizeMessage = (wasCancelled = false) => {
         const state = useChatStore.getState();
         // Save message if there's content, thought, or was cancelled
         if (state.currentContent || state.currentThought || wasCancelled) {
@@ -254,8 +225,6 @@ export function useChat() {
             role: 'assistant',
             content: state.currentContent,
             thought: state.currentThought || undefined,
-            search_results: searchResults || state.currentSearchResults,
-            search_query: searchQuery || state.currentSearchQuery,
             created_at: new Date().toISOString(),
           };
           addMessage(assistantMessage);
@@ -288,7 +257,6 @@ export function useChat() {
         type: 'chat',
         session_id: currentSession.id,
         message: content,
-        images: processedImages,
       }));
 
       // Set fallback title immediately, LLM title generated after response completes
@@ -305,7 +273,7 @@ export function useChat() {
     }
   }, [
     session, createSession, addMessage, setStreaming, resetCurrentStream,
-    appendContent, appendThought, setSearchResults, setChatError, messages,
+    appendContent, appendThought, setChatError, messages,
     updateSessionTitle, generateLLMTitle, connectWebSocket, setStreamProgress, setCancelling
   ]);
 
@@ -318,7 +286,7 @@ export function useChat() {
   }, [setCancelling]);
 
   const editMessage = useCallback(
-    async (messageId: string, newContent: string, images: string[] = []) => {
+    async (messageId: string, newContent: string) => {
       if (!session || isStreaming) return;
 
       try {
@@ -335,7 +303,7 @@ export function useChat() {
 
         removeMessagesFrom(messageId);
         setEditingMessageId(null);
-        await sendMessage(newContent, images);
+        await sendMessage(newContent);
       } catch (err) {
         console.error('Edit message error:', err);
         setChatError(err instanceof Error ? err.message : 'Failed to edit message');
@@ -453,8 +421,6 @@ export function useChat() {
     isStreaming,
     currentContent,
     currentThought,
-    currentSearchResults,
-    currentSearchQuery,
     editingMessageId,
     setEditingMessageId,
     error: useChatStore((state) => state.error),

@@ -9,7 +9,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
-from app.api.v1.chat import build_current_user_message
 from app.config import get_settings
 from app.dependencies import (
     get_history_service_ws,
@@ -19,8 +18,6 @@ from app.dependencies import (
 from app.models.domain.message import Message
 from app.services.functions.executor import FunctionExecutor
 from app.services.functions.registry import get_function_registry
-from app.services.image.converter import ImageConverter
-from app.services.image.processor import ImageValidationError
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
 from app.services.llm.prompts import get_system_prompt
@@ -57,7 +54,6 @@ class WebSocketChatHandler:
         self.history_service = history_service
         self.llm_client = llm_client
         self.settings = get_settings()
-        self.converter = ImageConverter()
         self.function_executor = FunctionExecutor(registry=get_function_registry())
 
         # Cancellation control
@@ -110,7 +106,6 @@ class WebSocketChatHandler:
         """Handle chat message and stream response."""
         session_id = data.get("session_id")
         content = data.get("message", "")
-        images_data = data.get("images", [])
         requested_max_tokens = data.get("max_tokens")
         temperature = data.get("temperature", 0.6)
 
@@ -133,35 +128,10 @@ class WebSocketChatHandler:
         request_id = str(uuid.uuid4())
         self._cancelled.clear()
 
-        # Process images
-        image_urls = []
-        has_image = False
-
-        for i, img_data in enumerate(images_data):
-            try:
-                img_bytes = img_data.get("data", "")
-                media_type = img_data.get("media_type")
-                data_url = self.converter.to_data_url(img_bytes, media_type)
-                image_urls.append(data_url)
-                has_image = True
-            except ImageValidationError as e:
-                await self.send_event("error", {
-                    "code": "VALIDATION_ERROR",
-                    "message": e.message,
-                    "field": f"images[{i}]",
-                })
-                return
-
         # Save user message
-        user_content = content
-        if has_image:
-            image_count = len(image_urls)
-            image_label = "Image" if image_count == 1 else f"{image_count} images"
-            user_content = f"[{image_label} attached]\n{content}"
-
         user_message = Message(
             role="user",
-            content=user_content,
+            content=content,
             session_id=session_id,
         )
         await self.history_service.append_message(
@@ -173,18 +143,10 @@ class WebSocketChatHandler:
         # Get history and build context
         history = await self.history_service.get_context_messages(session_id)
         history_without_current = history[:-1]
-        history_had_images = any(
-            msg.content.startswith("[") and "image" in msg.content.lower()
-            for msg in history_without_current
-            if msg.role == "user"
-        )
 
-        conversation_has_images = has_image or history_had_images
-        llm_messages = [{"role": "system", "content": get_system_prompt(has_images=conversation_has_images)}]
+        llm_messages = [{"role": "system", "content": get_system_prompt()}]
         llm_messages.extend(MessageBuilder.build_messages(history_without_current))
-        llm_messages.append(
-            build_current_user_message(content, image_urls, history_had_images)
-        )
+        llm_messages.append({"role": "user", "content": content})
 
         # Calculate safe max_tokens based on prompt size
         max_tokens = calculate_max_tokens(llm_messages, requested_max_tokens=requested_max_tokens)
@@ -197,7 +159,6 @@ class WebSocketChatHandler:
                 llm_messages=llm_messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                conversation_has_images=conversation_has_images,
             )
         )
 
@@ -213,7 +174,6 @@ class WebSocketChatHandler:
         llm_messages: list[dict],
         max_tokens: int,
         temperature: float,
-        conversation_has_images: bool,
     ) -> None:
         """Stream LLM response with progress updates and tool call handling."""
         await self.send_event("start", {"request_id": request_id})
@@ -224,7 +184,7 @@ class WebSocketChatHandler:
 
         # Get tools from function registry (includes memory tools)
         registry = get_function_registry()
-        tools = registry.get_openai_tools() if not conversation_has_images else None
+        tools = registry.get_openai_tools()
 
         # Track overall state across tool iterations
         final_content_buffer = ""
@@ -356,7 +316,8 @@ class WebSocketChatHandler:
                     assistant_tool_msg["tool_calls"] = tool_call_list
                     llm_messages.append(assistant_tool_msg)
 
-                    # Execute each tool and add results
+                    # Parse all tool calls and prepare for parallel execution
+                    parsed_calls: list[tuple[str, dict, str]] = []  # (name, args, id)
                     for tc_entry in tool_call_list:
                         func_name = tc_entry["function"]["name"]
                         func_args_str = tc_entry["function"]["arguments"]
@@ -370,15 +331,23 @@ class WebSocketChatHandler:
                                 f"[{request_id}] Failed to parse tool args: {func_args_str}"
                             )
 
-                        # Log full tool call details
+                        parsed_calls.append((func_name, func_args, tc_id))
+
+                        # Log tool call details
                         logger.info(
                             f"[{request_id}] === TOOL CALL: {func_name} ===\n"
                             f"  Arguments: {json.dumps(func_args, indent=2, default=str)}"
                         )
 
-                        # Execute the function
-                        result = await self.function_executor.execute(func_name, func_args)
+                    # Execute ALL tool calls in PARALLEL
+                    logger.info(
+                        f"[{request_id}] Executing {len(parsed_calls)} tool calls in parallel"
+                    )
+                    batch_calls = [(name, args) for name, args, _ in parsed_calls]
+                    results = await self.function_executor.execute_batch(batch_calls)
 
+                    # Process results and add to messages
+                    for (func_name, _, tc_id), result in zip(parsed_calls, results):
                         # Format result for LLM
                         if result.success:
                             result_content = json.dumps(result.result, default=str)
@@ -392,7 +361,7 @@ class WebSocketChatHandler:
                             "content": result_content,
                         })
 
-                        # Log full result details
+                        # Log result details
                         logger.info(
                             f"[{request_id}] === TOOL RESULT: {func_name} ===\n"
                             f"  Success: {result.success}\n"
@@ -467,7 +436,7 @@ async def websocket_chat(
     WebSocket endpoint for bidirectional chat streaming.
 
     Client messages:
-    - {"type": "chat", "session_id": "...", "message": "...", "images": [...]}
+    - {"type": "chat", "session_id": "...", "message": "..."}
     - {"type": "cancel"}
     - {"type": "ping", "timestamp": ...}
 

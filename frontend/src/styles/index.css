@@ -2,7 +2,6 @@
 @plugin "@tailwindcss/typography";
 @import "./globals.css";
 @import "./components/chat-container.css";
-@import "./components/image-viewer.css";
 @import "./components/chat-input.css";
 @import "./components/user-message.css";
 @import "./components/sidebar.css";
@@ -13,7 +12,6 @@
 @import "./components/qwen-logo.css";
 @import "./components/composer.css";
 @import "./components/prompt-deck.css";
-@import "./components/attachment-zone.css";
 @import "./components/stream-progress.css";
 @import "./components/search-panel.css";
 @import "./components/export-dialog.css";

@@ -70,9 +70,7 @@ def _clean_title(raw_title: str) -> str:
 
 def _truncate_title(content: str) -> str:
     """Generate fallback title using truncation (mirrors frontend logic)."""
-    # Remove image attachment prefix if present
-    clean = content.replace("[Image attached]\n", "").replace("[Image attached]", "")
-    normalized = " ".join(clean.split()).strip()
+    normalized = " ".join(content.split()).strip()
 
     if not normalized:
         return "New conversation"

@@ -5,7 +5,6 @@ import { Message } from '@/types/api';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Bot, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { ImageViewer } from './ImageViewer';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Button } from '@/components/ui/button';
 import MarkdownItRenderer from './MarkdownItRenderer';
@@ -15,12 +14,11 @@ interface AIMessageProps {
   message: Message;
   isStreaming?: boolean;
   isGlobalStreaming?: boolean;
-  onImageReview?: (imageUrl: string) => void;
   onRegenerate?: (messageId: string) => void;
   onThinkingToggle?: (isOpen: boolean) => void;
 }
 
-export default function AIMessage({ message, isStreaming, isGlobalStreaming, onImageReview, onRegenerate, onThinkingToggle }: AIMessageProps) {
+export default function AIMessage({ message, isStreaming, isGlobalStreaming, onRegenerate, onThinkingToggle }: AIMessageProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -44,28 +42,19 @@ export default function AIMessage({ message, isStreaming, isGlobalStreaming, onI
           />
         )}
 
-        {/* Main Content - only show if there's actual non-empty content or search results */}
-        {((message.content && message.content.trim().length > 0) || message.search_results) && (
+        {/* Main Content - only show if there's actual non-empty content */}
+        {message.content && message.content.trim().length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="ai-prose-container relative group"
           >
-            {message.content && (
-              <MarkdownItRenderer content={message.content} />
-            )}
+            <MarkdownItRenderer content={message.content} />
 
-            {message.content && (
-              <CopyButton
-                text={message.content}
-                className="ai-copy-button"
-              />
-            )}
-
-            {/* Image Viewer */}
-            {message.search_results && message.search_results.length > 0 && (
-              <ImageViewer images={message.search_results} query={message.search_query} onImageReview={onImageReview} />
-            )}
+            <CopyButton
+              text={message.content}
+              className="ai-copy-button"
+            />
 
             {isStreaming && message.content && (
               <motion.span

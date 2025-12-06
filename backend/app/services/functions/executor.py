@@ -268,6 +268,30 @@ class FunctionExecutor:
         self._cache.clear()
         return count
 
+    async def execute_batch(
+        self,
+        calls: list[tuple[str, dict[str, Any]]],
+    ) -> list[FunctionResult]:
+        """
+        Execute multiple function calls in parallel.
+
+        Args:
+            calls: List of (function_name, arguments) tuples
+
+        Returns:
+            List of FunctionResult in same order as input
+        """
+        import asyncio
+
+        if not calls:
+            return []
+
+        # Execute all calls concurrently
+        tasks = [self.execute(name, args) for name, args in calls]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        return list(results)
+
     def get_stats(self) -> dict[str, Any]:
         """Get executor statistics."""
         return {

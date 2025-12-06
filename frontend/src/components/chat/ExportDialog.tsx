@@ -46,14 +46,14 @@ export default function ExportDialog({
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('markdown');
   const [includeThoughts, setIncludeThoughts] = useState(true);
-  const [includeImages, setIncludeImages] = useState(true);
+  const [includeSearchResults, setIncludeSearchResults] = useState(true);
   const [includeTimestamps, setIncludeTimestamps] = useState(true);
 
   const handleExport = () => {
     const options: ExportOptions = {
       format,
       includeThoughts,
-      includeImages,
+      includeSearchResults,
       includeTimestamps,
       sessionTitle,
     };
@@ -62,9 +62,9 @@ export default function ExportDialog({
     onClose();
   };
 
-  // Count messages with thoughts and images
+  // Count messages with thoughts and search results
   const thoughtCount = messages.filter((m) => m.thought).length;
-  const imageCount = messages.filter((m) => m.images?.length || m.search_results?.length).length;
+  const searchResultCount = messages.filter((m) => m.search_results?.length).length;
 
   return (
     <AnimatePresence>
@@ -136,14 +136,14 @@ export default function ExportDialog({
                   <label className="option-item">
                     <input
                       type="checkbox"
-                      checked={includeImages}
-                      onChange={(e) => setIncludeImages(e.target.checked)}
+                      checked={includeSearchResults}
+                      onChange={(e) => setIncludeSearchResults(e.target.checked)}
                       className="option-checkbox"
                     />
                     <span className="option-text">
-                      Images & attachments
-                      {imageCount > 0 && (
-                        <span className="option-count">({imageCount})</span>
+                      Search results
+                      {searchResultCount > 0 && (
+                        <span className="option-count">({searchResultCount})</span>
                       )}
                     </span>
                   </label>

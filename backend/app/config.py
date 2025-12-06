@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # vLLM
     vllm_base_url: str = "http://localhost:8000/v1"
     vllm_api_key: str = "EMPTY"
-    vllm_model: str = "Qwen3-VL-30B-A3B-Instruct-AWQ-4bit"
+    vllm_model: str = "Qwen3-30B-A3B-Instruct-AWQ-4bit"
     vllm_max_model_len: int = 26000
     vllm_timeout: float = 120.0
     vllm_temperature: float = 0.6  # Qwen3 recommended
@@ -52,11 +52,6 @@ class Settings(BaseSettings):
     queue_stream_name: str = "llm_requests"
     queue_consumer_group: str = "llm_workers"
     queue_max_retries: int = 3
-
-    # Image
-    max_image_size_mb: int = 10
-    max_images_per_message: int = 1
-    allowed_image_formats: list[str] = ["jpeg", "jpg", "png", "gif", "webp"]
 
     # Web Access / SerpApi
     serpapi_api_key: str | None = None
@@ -97,11 +92,6 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         return [origin.strip() for origin in self.cors_origins.split(",")]
-
-    @property
-    def max_image_size_bytes(self) -> int:
-        """Convert MB to bytes."""
-        return self.max_image_size_mb * 1024 * 1024
 
 
 @lru_cache

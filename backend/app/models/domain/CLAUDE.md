@@ -1,10 +1,10 @@
-# Last Updated: 2025-12-03
+# Last Updated: 2025-12-06
 
 ## Purpose
-Domain entities representing core business objects (Message, Session, ImageAttachment).
+Domain entities representing core business objects (Message, Session).
 
 ## Key Files
-- `message.py` - Message dataclass with role, content, thinking, images, search results, JSON serialization
+- `message.py` - Message dataclass with role, content, thinking, search results, JSON serialization
 - `session.py` - Session dataclass with user_id, timestamps, message_count, metadata, touch/increment methods
 
 ## Dependencies/Relations

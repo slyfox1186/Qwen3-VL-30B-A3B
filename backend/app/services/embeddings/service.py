@@ -19,20 +19,29 @@ _model_name: str | None = None
 
 
 def _load_model(model_name: str) -> Any:
-    """Load sentence-transformers model lazily."""
+    """Load sentence-transformers model on CPU with all available cores.
+
+    Forces CPU to avoid GPU memory contention with vLLM.
+    """
     global _model, _model_name
 
     if _model is not None and _model_name == model_name:
         return _model
 
     try:
+        import os
+
+        import torch
         from sentence_transformers import SentenceTransformer
 
-        logger.info(f"Loading embedding model: {model_name}")
-        # Force CPU to avoid OOM on GPU (since LLM takes all VRAM)
+        # Force CPU and use all available logical cores
+        num_threads = os.cpu_count() or 8
+        torch.set_num_threads(num_threads)
+
+        logger.info(f"Loading embedding model on CPU ({num_threads} threads): {model_name}")
         _model = SentenceTransformer(model_name, device="cpu")
         _model_name = model_name
-        logger.info(f"Embedding model loaded: {model_name}")
+        logger.info(f"Embedding model loaded on CPU with {num_threads} threads")
         return _model
     except ImportError:
         logger.warning(

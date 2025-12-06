@@ -17,8 +17,6 @@ from app.dependencies import (
 )
 from app.models.domain.message import Message
 from app.models.schemas.chat import ChatRequest, ChatResponse
-from app.services.image.converter import ImageConverter
-from app.services.image.processor import ImageValidationError
 from app.services.llm.client import VLLMClient
 from app.services.llm.message_builder import MessageBuilder
 from app.services.llm.prompts import get_system_prompt
@@ -29,87 +27,6 @@ from app.services.session.manager import SessionManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat")
-
-
-# Tool definition for image search (OpenAI-compatible format)
-IMAGE_SEARCH_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "search_images",
-        "description": "Search for images on the internet. Use when user asks for images, pictures, photos, or visual examples.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query for images"
-                }
-            },
-            "required": ["query"]
-        }
-    }
-}
-
-TOOLS = [IMAGE_SEARCH_TOOL]
-
-
-
-
-def build_current_user_message(
-    content: str, image_urls: list[str], history_had_images: bool = False
-) -> dict:
-    """Build the current user message with optional images for vLLM.
-
-    Args:
-        content: The user's text message
-        image_urls: List of image data URLs for the current message
-        history_had_images: Whether the conversation history contains prior image references
-    """
-    if not image_urls:
-        return {"role": "user", "content": content}
-
-    # For Qwen-VL models, interleave text references with images for better multi-image handling
-    # Format: <context> <image 1 marker> <image> <image 2 marker> <image> ... <user text>
-    message_content = []
-
-    # CRITICAL: If history had images, add explicit context to prevent confusion
-    # The model cannot see previous images - only current ones
-    if history_had_images:
-        message_content.append({
-            "type": "text",
-            "text": (
-                "[IMPORTANT: Any images mentioned in the conversation history above are NO LONGER "
-                "visible to you. You can ONLY see the image(s) attached to THIS message. "
-                "Base your analysis SOLELY on the image(s) shown below, not on any prior descriptions.]\n\n"
-            ),
-        })
-
-    for idx, url in enumerate(image_urls):
-        # Add a text marker before each image to help the model track them
-        if len(image_urls) > 1:
-            message_content.append({
-                "type": "text",
-                "text": f"[Current Image {idx + 1} of {len(image_urls)}]:",
-            })
-
-        message_content.append({
-            "type": "image_url",
-            "image_url": {"url": url},
-        })
-
-    # Add the user's actual query/instruction
-    if len(image_urls) > 1:
-        instruction = f"\n\nPlease analyze ALL {len(image_urls)} images above. {content}"
-    else:
-        instruction = content
-
-    message_content.append({"type": "text", "text": instruction})
-
-    logger.info(
-        f"Building multimodal message with {len(image_urls)} images "
-        f"(history_had_images={history_had_images})"
-    )
-    return {"role": "user", "content": message_content}
 
 
 @router.post("/sync", response_model=ChatResponse)
@@ -127,40 +44,11 @@ async def chat_sync(
     """
     settings = get_settings()
     request_id = str(uuid.uuid4())
-    converter = ImageConverter()
 
-    # Process images if provided (for LLM request only, not stored)
-    image_urls = []
-    has_image = False
-
-    if request.images:
-        for i, img in enumerate(request.images):
-            try:
-                data_url = converter.to_data_url(img.data, img.media_type)
-                image_urls.append(data_url)
-                has_image = True
-            except ImageValidationError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={
-                        "error": {
-                            "code": "VALIDATION_ERROR",
-                            "message": e.message,
-                            "details": {"field": f"images[{i}]", "reason": e.message},
-                        }
-                    },
-                )
-
-    # Save user message to history (text only, note if images were attached)
-    user_content = request.message
-    if has_image:
-        image_count = len(image_urls)
-        image_label = "Image" if image_count == 1 else f"{image_count} images"
-        user_content = f"[{image_label} attached]\n{request.message}"
-
+    # Save user message to history
     user_message = Message(
         role="user",
-        content=user_content,
+        content=request.message,
         session_id=session_id,
     )
     await history_service.append_message(
@@ -169,27 +57,14 @@ async def chat_sync(
         settings.session_ttl_seconds,
     )
 
-    # Get conversation history (text only)
+    # Get conversation history
     history = await history_service.get_context_messages(session_id)
-
-    # Check if prior history (excluding current message) had any image attachments
     history_without_current = history[:-1]
-    history_had_images = any(
-        msg.content.startswith("[") and "image" in msg.content.lower()
-        for msg in history_without_current
-        if msg.role == "user"
-    )
 
-    # Build LLM messages: system prompt + history (text) + current message (with image if present)
-    # Determine if this conversation involves images (current or historical)
-    conversation_has_images = has_image or history_had_images
-
-    # Always include system prompt (with image context if conversation has images)
-    llm_messages = [{"role": "system", "content": get_system_prompt(has_images=conversation_has_images)}]
+    # Build LLM messages: system prompt + history + current message
+    llm_messages = [{"role": "system", "content": get_system_prompt()}]
     llm_messages.extend(MessageBuilder.build_messages(history_without_current))
-    llm_messages.append(
-        build_current_user_message(request.message, image_urls, history_had_images)
-    )
+    llm_messages.append({"role": "user", "content": request.message})
 
     try:
         # Get complete response
@@ -323,7 +198,7 @@ async def chat_structured(
 
     # Build LLM messages with schema instruction in system prompt
     schema_instruction = schema_validator.get_schema_instruction(schema)
-    system_prompt = get_system_prompt(has_images=False) + "\n\n" + schema_instruction
+    system_prompt = get_system_prompt() + "\n\n" + schema_instruction
 
     llm_messages = [{"role": "system", "content": system_prompt}]
     llm_messages.extend(MessageBuilder.build_messages(history_without_current))
