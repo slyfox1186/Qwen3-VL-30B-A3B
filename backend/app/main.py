@@ -1,6 +1,5 @@
 """FastAPI application entry point."""
 
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,17 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.config import get_settings
 from app.middleware.error_handler import setup_exception_handlers
+from app.middleware.observability import get_logger, setup_observability
 from app.middleware.request_id import RequestIDMiddleware
 from app.redis.client import RedisClient
 
 settings = get_settings()
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Get structured logger (configured in setup_observability)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -62,8 +58,11 @@ def create_app() -> FastAPI:
         expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
     )
 
-    # Request ID middleware
+    # Request ID middleware (must come before observability for request_id context)
     app.add_middleware(RequestIDMiddleware)
+
+    # Observability (structured logging, metrics, error tracking)
+    setup_observability(app)
 
     # Exception handlers
     setup_exception_handlers(app)

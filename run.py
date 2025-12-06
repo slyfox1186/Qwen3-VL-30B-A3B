@@ -20,9 +20,23 @@ ROOT_DIR = Path(__file__).parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 BACKEND_DIR = ROOT_DIR / "backend"
 
+# Conda environment Python binary
+CONDA_ENV_NAME = "qwen"
+CONDA_BASE = Path.home() / "miniconda3"
+CONDA_PYTHON = CONDA_BASE / "envs" / CONDA_ENV_NAME / "bin" / "python"
+
 # Global process tracking for cleanup
 _processes: list[subprocess.Popen] = []
 _shutting_down = False
+
+
+def validate_conda_env() -> None:
+    """Validate that the conda environment Python binary exists."""
+    if not CONDA_PYTHON.exists():
+        print(f"ERROR: Conda Python not found at: {CONDA_PYTHON}")
+        print(f"Please ensure the '{CONDA_ENV_NAME}' conda environment exists.")
+        print(f"Create it with: conda create -n {CONDA_ENV_NAME} python=3.11")
+        sys.exit(1)
 
 
 def load_env():
@@ -260,6 +274,9 @@ def setup_signal_handlers() -> None:
 def main():
     global _processes
 
+    # Validate conda environment exists
+    validate_conda_env()
+
     # Set up signal handlers first
     setup_signal_handlers()
 
@@ -347,7 +364,7 @@ def main():
                 compileall.compile_dir(BACKEND_DIR / "app", quiet=1, optimize=2)
 
             uvicorn_cmd = [
-                sys.executable,
+                str(CONDA_PYTHON),
                 "-m",
                 "uvicorn",
                 "app.main:app",
@@ -388,7 +405,7 @@ def main():
                 env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
                 vllm_cmd = [
-                    sys.executable,
+                    str(CONDA_PYTHON),
                     "-m",
                     "vllm.entrypoints.openai.api_server",
                     "--model",
@@ -414,6 +431,8 @@ def main():
                     "--enable-auto-tool-choice",
                     "--tool-call-parser",
                     "hermes",
+                    "--reasoning-parser",
+                    "qwen3",
                 ]
 
                 vllm_proc = subprocess.Popen(vllm_cmd, env=env)

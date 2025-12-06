@@ -2,17 +2,23 @@
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.config import get_settings
 from app.redis.client import RedisClient
 from app.services.llm.client import VLLMClient
+from app.services.schema.registry import SchemaRegistry, get_schema_registry
+from app.services.schema.validator import SchemaValidator
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
 
+# ============================================================================
+# HTTP Request Dependencies
+# ============================================================================
+
 
 async def get_redis_client(request: Request) -> RedisClient:
-    """Get Redis client from app state."""
+    """Get Redis client from app state (HTTP endpoints)."""
     return request.app.state.redis
 
 
@@ -28,6 +34,32 @@ async def get_history_service(
     redis: Annotated[RedisClient, Depends(get_redis_client)]
 ) -> ChatHistoryService:
     """Get chat history service instance."""
+    settings = get_settings()
+    return ChatHistoryService(redis, settings.max_history_messages)
+
+
+# ============================================================================
+# WebSocket Dependencies
+# ============================================================================
+
+
+async def get_redis_client_ws(websocket: WebSocket) -> RedisClient:
+    """Get Redis client from app state (WebSocket endpoints)."""
+    return websocket.app.state.redis
+
+
+async def get_session_manager_ws(
+    redis: Annotated[RedisClient, Depends(get_redis_client_ws)]
+) -> SessionManager:
+    """Get session manager instance for WebSocket."""
+    settings = get_settings()
+    return SessionManager(redis, settings.session_ttl_seconds)
+
+
+async def get_history_service_ws(
+    redis: Annotated[RedisClient, Depends(get_redis_client_ws)]
+) -> ChatHistoryService:
+    """Get chat history service instance for WebSocket."""
     settings = get_settings()
     return ChatHistoryService(redis, settings.max_history_messages)
 
@@ -77,3 +109,13 @@ async def validate_session(
             },
         )
     return session_id
+
+
+def get_schema_registry_dep() -> SchemaRegistry:
+    """Get schema registry instance."""
+    return get_schema_registry()
+
+
+def get_schema_validator() -> SchemaValidator:
+    """Get schema validator instance."""
+    return SchemaValidator()

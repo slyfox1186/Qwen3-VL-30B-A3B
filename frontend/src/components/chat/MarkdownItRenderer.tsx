@@ -30,8 +30,9 @@ export default function MarkdownItRenderer({ content, className }: MarkdownItRen
 
   // Handle copy button clicks
   const handleCopyClick = useCallback(async (button: HTMLButtonElement) => {
-    const code = button.getAttribute('data-code');
-    if (!code) return;
+    const rawCode = button.getAttribute('data-code');
+    if (!rawCode) return;
+    const code = decodeURIComponent(rawCode);
 
     try {
       let copied = false;
@@ -119,7 +120,7 @@ export default function MarkdownItRenderer({ content, className }: MarkdownItRen
       typographer: true,
       highlight: function (str, lang) {
         // Encode the code for the data attribute
-        const encodedCode = str.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const encodedCode = encodeURIComponent(str);
         const langDisplay = lang || 'text';
 
         const header = `<div class="code-block-header"><span class="code-language-badge">${langDisplay}</span><button class="code-copy-btn" data-code="${encodedCode}" title="Copy code">${copyIcon}</button></div>`;
@@ -143,8 +144,12 @@ export default function MarkdownItRenderer({ content, className }: MarkdownItRen
 
     const rawHTML = md.render(content);
     return DOMPurify.sanitize(rawHTML, {
-      ADD_ATTR: ['target', 'data-code'],
-      ADD_TAGS: ['button'],
+      ADD_ATTR: [
+        'target', 'data-code', 'class', 
+        'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 
+        'x', 'y', 'rx', 'ry', 'd', 'width', 'height', 'xmlns', 'points'
+      ],
+      ADD_TAGS: ['button', 'svg', 'rect', 'path', 'polyline'],
       FORBID_TAGS: ['style', 'script'],
     });
   }, [content, md, isMounted]);

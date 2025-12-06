@@ -10,6 +10,7 @@ import { CopyButton } from '@/components/ui/CopyButton';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import MarkdownItRenderer from './MarkdownItRenderer';
 
 interface UserMessageProps {
   message: Message;
@@ -250,7 +251,7 @@ export default function UserMessage({
           message.content && (
             <div className="relative group">
               <div className="user-text-bubble">
-                <p className="user-text">{message.content}</p>
+                <MarkdownItRenderer content={message.content} className="user-markdown" />
               </div>
               <div className="user-message-actions group-hover:opacity-100">
                 <CopyButton

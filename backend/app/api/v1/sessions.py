@@ -13,6 +13,13 @@ from app.dependencies import (
 )
 from app.models.schemas.session import (
     HistoryMessage,
+    SearchMatch,
+    SearchPagination,
+    SearchRequest,
+    SearchResponse,
+    SemanticSearchMatch,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
     SessionCreate,
     SessionHistory,
     SessionResponse,
@@ -24,6 +31,7 @@ from app.models.schemas.session import (
 from app.services.llm.client import VLLMClient
 from app.services.session.history import ChatHistoryService
 from app.services.session.manager import SessionManager
+from app.services.session.search import MessageType, SearchFilter, SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -423,3 +431,269 @@ Return ONLY the title and nothing else.""",
     await session_manager.update_session(session)
 
     return TitleGenerateResponse(title=title, generated=generated)
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search_messages(
+    request: SearchRequest,
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+):
+    """
+    Search across conversation history with filters.
+
+    Supports full-text search, date range filtering, and content type filtering.
+    Returns highlighted snippets and relevance scores.
+    """
+    search_service = SearchService()
+
+    # Build search filter from request
+    message_type = MessageType.ALL
+    if request.message_type:
+        try:
+            message_type = MessageType(request.message_type.lower())
+        except ValueError:
+            pass
+
+    filter_ = SearchFilter(
+        query=request.query,
+        message_type=message_type,
+        date_from=request.date_from,
+        date_to=request.date_to,
+        has_images=request.has_images,
+        has_code=request.has_code,
+        session_id=request.session_id,
+    )
+
+    # Get all messages to search
+    # If session_id specified, only get from that session
+    # Otherwise, get from all sessions (for now, we'll need a better approach for scale)
+    all_messages = []
+
+    if request.session_id:
+        # Search within specific session
+        session = await session_manager.get_session(request.session_id)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": {
+                        "code": "SESSION_NOT_FOUND",
+                        "message": f"Session {request.session_id} not found",
+                    }
+                },
+            )
+        messages = await history_service.get_history(request.session_id, limit=1000)
+        all_messages.extend(messages)
+    else:
+        # Search across all sessions - get recent sessions
+        sessions = await session_manager.list_recent_sessions(limit=50)
+        for session in sessions:
+            messages = await history_service.get_history(session.id, limit=200)
+            all_messages.extend(messages)
+
+    # Perform search
+    result = search_service.search_messages(
+        messages=all_messages,
+        filter_=filter_,
+        page=request.page,
+        page_size=request.page_size,
+    )
+
+    # Convert to response format
+    matches = [
+        SearchMatch(
+            message_id=m.message_id,
+            session_id=m.session_id,
+            role=m.role,
+            content=m.content[:500] if len(m.content) > 500 else m.content,
+            thought=m.thought[:200] if m.thought and len(m.thought) > 200 else m.thought,
+            created_at=m.created_at,
+            highlights=m.match_highlights,
+            relevance=round(m.relevance_score, 3),
+            has_images=m.has_images,
+            has_code=m.has_code,
+        )
+        for m in result.matches
+    ]
+
+    pagination = SearchPagination(
+        total=result.total_count,
+        page=result.page,
+        page_size=result.page_size,
+        total_pages=(result.total_count + result.page_size - 1) // result.page_size,
+    )
+
+    return SearchResponse(
+        matches=matches,
+        pagination=pagination,
+        query=result.query,
+    )
+
+
+@router.post("/semantic-search", response_model=SemanticSearchResponse)
+async def semantic_search_messages(
+    request: SemanticSearchRequest,
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+):
+    """
+    Semantic search across conversation history using embeddings.
+
+    Uses vector similarity to find conceptually related messages,
+    even if they don't contain the exact search terms.
+
+    Requires sentence-transformers to be installed for embedding generation.
+    Returns available=false if the service is not configured.
+    """
+    # Lazy import to avoid startup errors if sentence-transformers not installed
+    try:
+        from app.services.embeddings import VectorStore, get_embedding_service
+
+        embedding_service = get_embedding_service()
+
+        if not embedding_service.is_available:
+            return SemanticSearchResponse(
+                matches=[],
+                query=request.query,
+                total=0,
+                available=False,
+            )
+    except ImportError:
+        return SemanticSearchResponse(
+            matches=[],
+            query=request.query,
+            total=0,
+            available=False,
+        )
+
+    # We need to get the Redis client - use a workaround for now
+    # In production, this would be injected properly
+    redis_client = await session_manager._redis.health_check()  # Access internal client
+    if not redis_client:
+        return SemanticSearchResponse(
+            matches=[],
+            query=request.query,
+            total=0,
+            available=False,
+        )
+
+    # Create vector store with the session manager's redis client
+    vector_store = VectorStore(
+        redis_client=session_manager._redis,
+        embedding_service=embedding_service,
+        namespace="messages",
+    )
+
+    # Build filter metadata if session_id specified
+    filter_metadata = None
+    if request.session_id:
+        filter_metadata = {"session_id": request.session_id}
+
+    # Perform semantic search
+    results = await vector_store.search(
+        query=request.query,
+        top_k=request.top_k,
+        min_score=request.min_score,
+        filter_metadata=filter_metadata,
+    )
+
+    # Convert to response format
+    matches = [
+        SemanticSearchMatch(
+            message_id=r.id,
+            session_id=r.metadata.get("session_id", "unknown"),
+            similarity=round(r.score, 4),
+            text_preview=r.metadata.get("text", "")[:300],
+            metadata={
+                k: v for k, v in r.metadata.items()
+                if k not in ("text", "session_id")
+            } or None,
+        )
+        for r in results
+    ]
+
+    return SemanticSearchResponse(
+        matches=matches,
+        query=request.query,
+        total=len(matches),
+        available=True,
+    )
+
+
+@router.post("/index-messages")
+async def index_session_messages(
+    session_id: str,
+    history_service: Annotated[ChatHistoryService, Depends(get_history_service)],
+    session_manager: Annotated[SessionManager, Depends(get_session_manager)],
+):
+    """
+    Index all messages in a session for semantic search.
+
+    This is a manual trigger - in production, messages would be indexed
+    automatically when saved. Call this to backfill existing conversations.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    # Validate session exists
+    session = await session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "SESSION_NOT_FOUND",
+                    "message": f"Session {session_id} not found",
+                }
+            },
+        )
+
+    # Lazy import
+    try:
+        from app.services.embeddings import VectorStore, get_embedding_service
+
+        embedding_service = get_embedding_service()
+        if not embedding_service.is_available:
+            return {"indexed": 0, "available": False, "message": "Embedding service not available"}
+    except ImportError:
+        return {"indexed": 0, "available": False, "message": "sentence-transformers not installed"}
+
+    # Create vector store
+    vector_store = VectorStore(
+        redis_client=session_manager._redis,
+        embedding_service=embedding_service,
+        namespace="messages",
+    )
+
+    # Get all messages
+    messages = await history_service.get_history(session_id, limit=1000)
+
+    if not messages:
+        return {"indexed": 0, "available": True, "message": "No messages to index"}
+
+    # Prepare items for batch indexing
+    items = [
+        (
+            msg.id,
+            msg.content,
+            {
+                "session_id": session_id,
+                "role": msg.role,
+                "created_at": msg.created_at,
+            },
+        )
+        for msg in messages
+        if msg.content  # Skip empty messages
+    ]
+
+    # Index all messages
+    indexed = await vector_store.add_batch(items, ttl_seconds=settings.session_ttl_seconds)
+
+    return {
+        "indexed": indexed,
+        "total_messages": len(messages),
+        "available": True,
+        "message": f"Indexed {indexed} messages from session {session_id}",
+    }

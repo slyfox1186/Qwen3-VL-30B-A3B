@@ -1,9 +1,9 @@
 .user-message-container {
-  @apply flex gap-4 justify-end w-full;
+  @apply flex flex-row gap-3 justify-end items-start w-full;
 }
 
 .user-message-content-wrapper {
-  @apply flex flex-col items-end max-w-[80%] gap-1.5;
+  @apply items-end gap-1.5 min-w-0 max-w-[70%];
 }
 
 .user-images-grid {
@@ -20,10 +20,79 @@
 
 .user-text-bubble {
   @apply bg-secondary text-secondary-foreground dark:bg-zinc-800 dark:text-white px-5 py-3.5 rounded-2xl rounded-tr-sm shadow-sm border border-border/50;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
-.user-text {
-  @apply whitespace-pre-wrap break-words text-[0.9375rem] leading-relaxed;
+/* User markdown content - inherits from .markdown-body but with adjustments for user bubble */
+.user-markdown.markdown-body {
+  @apply text-[0.9375rem] leading-relaxed;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.user-markdown p {
+  @apply whitespace-pre-wrap break-words mb-2 last:mb-0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.user-markdown h1,
+.user-markdown h2,
+.user-markdown h3,
+.user-markdown h4,
+.user-markdown h5,
+.user-markdown h6 {
+  @apply mt-3 mb-1.5 first:mt-0;
+}
+
+.user-markdown ul,
+.user-markdown ol {
+  @apply mb-2 pl-5;
+}
+
+.user-markdown li {
+  @apply mt-1;
+}
+
+.user-markdown code {
+  @apply bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-[0.85em];
+}
+
+.user-markdown pre {
+  @apply my-2 p-3 rounded-lg bg-black/10 dark:bg-white/10 overflow-x-auto;
+}
+
+.user-markdown pre code {
+  @apply bg-transparent p-0;
+}
+
+.user-markdown blockquote {
+  @apply my-2 pl-3 border-l-2 border-current/30 italic;
+}
+
+.user-markdown a {
+  @apply underline underline-offset-2;
+}
+
+.user-markdown table {
+  @apply my-2 w-full text-sm;
+}
+
+.user-markdown th,
+.user-markdown td {
+  @apply p-2 border border-current/20;
+}
+
+.user-markdown hr {
+  @apply my-3 border-current/20;
+}
+
+/* Code block wrapper adjustments for user messages */
+.user-markdown .code-block-wrapper {
+  @apply my-2;
 }
 
 .user-timestamp {
@@ -31,7 +100,7 @@
 }
 
 .user-avatar {
-  @apply h-9 w-9 mt-auto mb-6 bg-muted border border-border shadow-sm shrink-0;
+  @apply h-9 w-9 bg-muted border border-border shadow-sm shrink-0;
 }
 
 .user-avatar-fallback {

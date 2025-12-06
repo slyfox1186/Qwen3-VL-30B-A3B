@@ -13,9 +13,10 @@ interface ChatInputProps {
   onSend: (content: string, images: string[]) => void;
   onStop: () => void;
   isStreaming: boolean;
+  hasMessages: boolean;
 }
 
-export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProps) {
+export default function ChatInput({ onSend, onStop, isStreaming, hasMessages }: ChatInputProps) {
   const {
     input,
     setInput,
@@ -49,7 +50,7 @@ export default function ChatInput({ onSend, onStop, isStreaming }: ChatInputProp
     <div className="composer-container">
       <PromptDeck 
         onSelect={handleSuggestionSelect} 
-        isVisible={!input && images.length === 0 && !isStreaming} 
+        isVisible={!input && images.length === 0 && !isStreaming && !hasMessages} 
       />
 
       <div 

@@ -14,4 +14,9 @@
 @import "./components/composer.css";
 @import "./components/prompt-deck.css";
 @import "./components/attachment-zone.css";
+@import "./components/stream-progress.css";
+@import "./components/search-panel.css";
+@import "./components/export-dialog.css";
+@import "./components/model-selector.css";
+@import "./components/threads.css";
 @import "./markdown-it-renderer.css";

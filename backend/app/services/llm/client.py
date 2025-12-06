@@ -82,6 +82,12 @@ class VLLMClient:
 
                 delta = chunk.choices[0].delta
 
+                # Yield reasoning/thinking tokens (vLLM with --reasoning-parser)
+                # The reasoning_content field is used when reasoning parser is enabled
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning:
+                    yield {"type": "reasoning", "content": reasoning}
+
                 # Yield content tokens
                 if delta.content:
                     yield {"type": "content", "content": delta.content}

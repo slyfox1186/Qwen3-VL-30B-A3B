@@ -24,6 +24,19 @@ export interface Message {
   search_results?: SearchResult[]; // Images found by search
   search_query?: string; // Query used for search
   created_at: string;
+  // Thread system fields
+  thread_id?: string; // ID of thread this message belongs to
+  is_pinned?: boolean; // Whether message is pinned to top
+  thread_position?: number; // Position within thread
+}
+
+export interface Thread {
+  id: string;
+  name?: string;
+  messages: string[]; // Message IDs
+  created_at: string;
+  updated_at: string;
+  collapsed?: boolean;
 }
 
 export interface ChatRequest {

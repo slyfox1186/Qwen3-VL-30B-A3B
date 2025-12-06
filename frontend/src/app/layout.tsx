@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme";
+import { ObservabilityProvider } from "@/components/observability";
 import "@/styles/index.css";
 
 const geistSans = Geist({
@@ -52,9 +53,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        <ObservabilityProvider sentryDsn={process.env.NEXT_PUBLIC_SENTRY_DSN}>
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
+        </ObservabilityProvider>
       </body>
     </html>
   );

@@ -3,10 +3,23 @@
 import json
 import logging
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+from app.services.functions import FunctionExecutor, get_function_registry
+
 logger = logging.getLogger(__name__)
+
+# Global executor instance for function calls
+_function_executor: FunctionExecutor | None = None
+
+
+def get_function_executor() -> FunctionExecutor:
+    """Get or create the global function executor."""
+    global _function_executor
+    if _function_executor is None:
+        _function_executor = FunctionExecutor()
+    return _function_executor
 
 
 @dataclass
@@ -29,6 +42,7 @@ class StreamResult:
     thought: str | None = None
     search_results: list[dict] | None = None
     search_query: str | None = None
+    function_calls: list[dict] | None = field(default=None)
 
 
 class SSEStreamHandler:
@@ -72,10 +86,10 @@ class SSEStreamHandler:
         content_started = False
 
         # Thinking process state
-        in_thought = False
-        stream_buffer = ""
-        start_tag = "<think>"
-        end_tag = "</think>"
+        # vLLM with --reasoning-parser sends reasoning in a separate field
+        # We track if we've emitted thought_start to handle both modes
+        thought_started = False
+        chunk_count = 0
 
         # Emit start event
         logger.info(f"[{request_id}] SSE stream starting")
@@ -84,96 +98,44 @@ class SSEStreamHandler:
             "request_id": request_id,
         }).to_sse()
 
-        # Debug: track first N characters to see raw model output
-        first_chars_logged = False
-        chunk_count = 0
-
         try:
             async for chunk in token_generator:
                 chunk_type = chunk.get("type")
                 chunk_count += 1
 
-                if chunk_type == "content":
+                # Handle reasoning content from vLLM --reasoning-parser
+                if chunk_type == "reasoning":
+                    reasoning = chunk.get("content", "")
+                    if reasoning:
+                        if not thought_started:
+                            yield StreamEvent("thought_start", {"type": "thought_start"}).to_sse()
+                            thought_started = True
+                        thought_buffer += reasoning
+                        yield StreamEvent("thought_delta", {
+                            "type": "thought_delta",
+                            "content": reasoning
+                        }).to_sse()
+
+                elif chunk_type == "content":
                     content = chunk.get("content", "")
                     if content:
-                        # Log first chunk immediately
+                        # Log first chunk
                         if chunk_count <= 3:
                             logger.info(f"[{request_id}] Chunk {chunk_count}: {repr(content[:100])}")
 
-                        stream_buffer += content
+                        # End thinking if we were in it and now getting content
+                        if thought_started and not content_started:
+                            yield StreamEvent("thought_end", {"type": "thought_end"}).to_sse()
 
-                        # Log first 200 chars to see if <think> exists
-                        if not first_chars_logged and len(stream_buffer) >= 50:
-                            logger.info(f"[{request_id}] FIRST 200 CHARS: {repr(stream_buffer[:200])}")
-                            first_chars_logged = True
+                        if not content_started:
+                            yield StreamEvent("content_start", {"type": "content_start"}).to_sse()
+                            content_started = True
 
-                        # Process buffer for tags
-                        while stream_buffer:
-                            if in_thought:
-                                # Look for closing tag
-                                end_idx = stream_buffer.find(end_tag)
-                                if end_idx != -1:
-                                    # Found end of thought
-                                    thought_chunk = stream_buffer[:end_idx]
-                                    if thought_chunk:
-                                        thought_buffer += thought_chunk
-                                        yield StreamEvent("thought_delta", {
-                                            "type": "thought_delta",
-                                            "content": thought_chunk
-                                        }).to_sse()
-
-                                    yield StreamEvent("thought_end", {"type": "thought_end"}).to_sse()
-                                    in_thought = False
-                                    stream_buffer = stream_buffer[end_idx + len(end_tag):]
-                                else:
-                                    # No end tag yet
-                                    # Keep enough chars to potentially match the start of end_tag
-                                    # end_tag is </think>, 8 chars.
-                                    # If buffer ends with '<', '</', '</t', etc., we must wait.
-                                    safe_len = len(stream_buffer) - (len(end_tag) - 1)
-                                    if safe_len > 0:
-                                        chunk_to_send = stream_buffer[:safe_len]
-                                        thought_buffer += chunk_to_send
-                                        yield StreamEvent("thought_delta", {
-                                            "type": "thought_delta",
-                                            "content": chunk_to_send
-                                        }).to_sse()
-                                        stream_buffer = stream_buffer[safe_len:]
-                                    break
-                            else:
-                                # Look for starting tag
-                                start_idx = stream_buffer.find(start_tag)
-                                if start_idx != -1:
-                                    # Found start of thought
-                                    content_chunk = stream_buffer[:start_idx]
-                                    if content_chunk:
-                                        content_buffer += content_chunk
-                                        if not content_started:
-                                            yield StreamEvent("content_start", {"type": "content_start"}).to_sse()
-                                            content_started = True
-                                        yield StreamEvent("content_delta", {
-                                            "type": "content_delta",
-                                            "content": content_chunk
-                                        }).to_sse()
-
-                                    yield StreamEvent("thought_start", {"type": "thought_start"}).to_sse()
-                                    in_thought = True
-                                    stream_buffer = stream_buffer[start_idx + len(start_tag):]
-                                else:
-                                    # No start tag yet
-                                    safe_len = len(stream_buffer) - (len(start_tag) - 1)
-                                    if safe_len > 0:
-                                        chunk_to_send = stream_buffer[:safe_len]
-                                        content_buffer += chunk_to_send
-                                        if not content_started:
-                                            yield StreamEvent("content_start", {"type": "content_start"}).to_sse()
-                                            content_started = True
-                                        yield StreamEvent("content_delta", {
-                                            "type": "content_delta",
-                                            "content": chunk_to_send
-                                        }).to_sse()
-                                        stream_buffer = stream_buffer[safe_len:]
-                                    break
+                        content_buffer += content
+                        yield StreamEvent("content_delta", {
+                            "type": "content_delta",
+                            "content": content
+                        }).to_sse()
 
                 elif chunk_type == "tool_call":
                     # Accumulate tool call data (streamed in chunks)
@@ -189,25 +151,15 @@ class SSEStreamHandler:
                     if func.get("arguments"):
                         tool_calls[idx]["arguments"] += func["arguments"]
 
-            # Flush remaining buffer
-            if stream_buffer:
-                if in_thought:
-                    thought_buffer += stream_buffer
-                    yield StreamEvent("thought_delta", {
-                        "type": "thought_delta",
-                        "content": stream_buffer
-                    }).to_sse()
-                else:
-                    content_buffer += stream_buffer
-                    if not content_started:
-                        yield StreamEvent("content_start", {"type": "content_start"}).to_sse()
-                        content_started = True
-                    yield StreamEvent("content_delta", {
-                        "type": "content_delta",
-                        "content": stream_buffer
-                    }).to_sse()
+            # End thinking if it was started but no content followed
+            if thought_started and not content_started:
+                yield StreamEvent("thought_end", {"type": "thought_end"}).to_sse()
 
             # Process accumulated tool calls
+            function_results: list[dict] = []
+            registry = get_function_registry()
+            executor = get_function_executor()
+
             for idx, tc in tool_calls.items():
                 tool_name = tc.get("name", "")
                 arguments_str = tc.get("arguments", "")
@@ -238,6 +190,47 @@ class SSEStreamHandler:
 
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to parse tool arguments: {e}")
+
+                elif registry.get(tool_name):
+                    # Execute registered built-in function
+                    try:
+                        args = json.loads(arguments_str) if arguments_str else {}
+                        result = await executor.execute(tool_name, args)
+
+                        function_call_result = {
+                            "name": tool_name,
+                            "arguments": args,
+                            "success": result.success,
+                            "result": result.result,
+                            "error": result.error,
+                            "execution_time_ms": result.execution_time_ms,
+                            "from_cache": result.from_cache,
+                        }
+                        function_results.append(function_call_result)
+
+                        # Emit function result event
+                        yield StreamEvent("function_result", {
+                            "type": "function_result",
+                            "function": tool_name,
+                            "arguments": args,
+                            "success": result.success,
+                            "result": result.result,
+                            "error": result.error,
+                        }).to_sse()
+
+                        logger.info(
+                            f"[{request_id}] Function {tool_name} executed: "
+                            f"success={result.success}, "
+                            f"time={result.execution_time_ms:.1f}ms"
+                        )
+
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse function arguments: {e}")
+                        yield StreamEvent("function_error", {
+                            "type": "function_error",
+                            "function": tool_name,
+                            "error": f"Invalid arguments: {e}",
+                        }).to_sse()
                 else:
                     logger.warning(f"Unknown tool: {tool_name}")
 
@@ -252,6 +245,7 @@ class SSEStreamHandler:
                     thought=thought_buffer if thought_buffer else None,
                     search_results=captured_search_results,
                     search_query=captured_search_query,
+                    function_calls=function_results if function_results else None,
                 ))
 
             # Emit done event

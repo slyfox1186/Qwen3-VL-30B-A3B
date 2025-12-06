@@ -47,6 +47,10 @@ class Message:
     search_query: str | None = None
     created_at: float = field(default_factory=time.time)
     session_id: str | None = None
+    # Thread system fields
+    thread_id: str | None = None  # ID of thread this message belongs to
+    is_pinned: bool = False  # Whether message is pinned to top
+    thread_position: int | None = None  # Position within thread
 
     @property
     def created_at_datetime(self) -> datetime:
@@ -70,6 +74,9 @@ class Message:
             "search_query": self.search_query,
             "created_at": self.created_at,
             "session_id": self.session_id,
+            "thread_id": self.thread_id,
+            "is_pinned": self.is_pinned,
+            "thread_position": self.thread_position,
         }
 
     def to_json(self) -> str:
@@ -93,6 +100,9 @@ class Message:
             search_query=data.get("search_query"),
             created_at=data.get("created_at", time.time()),
             session_id=data.get("session_id"),
+            thread_id=data.get("thread_id"),
+            is_pinned=data.get("is_pinned", False),
+            thread_position=data.get("thread_position"),
         )
 
     @classmethod
@@ -120,5 +130,14 @@ class Message:
 
         if self.search_query:
             result["search_query"] = self.search_query
+
+        if self.thread_id:
+            result["thread_id"] = self.thread_id
+
+        if self.is_pinned:
+            result["is_pinned"] = self.is_pinned
+
+        if self.thread_position is not None:
+            result["thread_position"] = self.thread_position
 
         return result

@@ -49,8 +49,12 @@ export const useThemeStore = create<ThemeState>()(
     {
       name: 'theme-storage',
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+        // Ensure hydration completes even if state is undefined
+        if (state) {
+          state.setHasHydrated(true);
+        }
       },
     }
   )
 );
+

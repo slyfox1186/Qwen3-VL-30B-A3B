@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="../.env",  # Root .env file (one level up from backend/)
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -57,6 +57,20 @@ class Settings(BaseSettings):
 
     # CORS
     cors_origins: str = "http://localhost:3000"
+
+    # Observability
+    sentry_dsn: str | None = None
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.1
+    enable_metrics: bool = True
+    enable_structured_logging: bool = True
+
+    # Embeddings / Vector Search
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dimension: int = 384
+    embedding_batch_size: int = 32
+    vector_search_top_k: int = 10
+    enable_vector_search: bool = True
 
     @property
     def cors_origins_list(self) -> list[str]:

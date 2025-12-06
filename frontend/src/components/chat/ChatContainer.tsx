@@ -1,18 +1,22 @@
 'use client';
 
 import React, { useEffect, useCallback } from 'react';
-import { useChat } from '@/hooks/use-chat';
+import { useWebSocketChat } from '@/hooks/use-websocket-chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import Sidebar from './Sidebar';
+import StreamProgressBar from './StreamProgressBar';
+import SearchPanel from '@/components/search/SearchPanel';
+import { useSearch, SearchMatch } from '@/hooks/use-search';
 import { useSessionStore } from '@/stores/session-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useChatStore } from '@/stores/chat-store';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { PanelLeftOpen, PanelLeftClose, Keyboard, X } from 'lucide-react';
+import { PanelLeftOpen, PanelLeftClose, Keyboard, X, Search, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { ThemeToggle } from '@/components/theme';
+import ExportDialog from './ExportDialog';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -33,26 +37,70 @@ export default function ChatContainer() {
     editingMessageId,
     setEditingMessageId,
     error: chatError,
-  } = useChat();
+    streamProgress,
+    isCancelling,
+  } = useWebSocketChat();
   const { session, setSession, createSession, clearSession, hasHydrated, error: sessionError } = useSessionStore();
   const { isSidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
+  const { open: openSearch } = useSearch();
   const [showShortcuts, setShowShortcuts] = React.useState(false);
+  const [showExport, setShowExport] = React.useState(false);
+
+  // Handle search result click - navigate to session and highlight message
+  const handleSearchResultClick = useCallback(async (match: SearchMatch) => {
+    if (match.session_id === session?.id) {
+      // Already in this session, just scroll to message
+      const element = document.getElementById(`message-${match.message_id}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('highlight-flash');
+        setTimeout(() => element.classList.remove('highlight-flash'), 2000);
+      }
+    } else {
+      // Switch to the session
+      const newSession = await useSessionStore.getState().sessions.find(s => s.id === match.session_id);
+      if (newSession) {
+        setSession(newSession);
+        loadedSessionRef.current = newSession.id;
+        await loadHistory(newSession.id);
+        // After loading, scroll to the message
+        setTimeout(() => {
+          const element = document.getElementById(`message-${match.message_id}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('highlight-flash');
+            setTimeout(() => element.classList.remove('highlight-flash'), 2000);
+          }
+        }, 500);
+      } else {
+        toast.info('Session not found locally. Try refreshing.');
+      }
+    }
+  }, [session, setSession, loadHistory]);
 
   // Status logic
   const isError = !!chatError || !!sessionError;
-  const statusText = isError 
-    ? 'Error' 
-    : !session 
-      ? 'Connecting...' 
-      : isStreaming 
-        ? 'Generating...' 
-        : 'Online';
-        
-  const statusColorClass = isError 
-    ? 'error' 
-    : !session 
-      ? 'offline' 
-      : 'online';
+  const getStatusText = () => {
+    if (isError) return 'Error';
+    if (!session) return 'Connecting...';
+    if (isCancelling) return 'Cancelling...';
+    if (isStreaming && streamProgress) {
+      return `${streamProgress.tokensPerSecond.toFixed(1)} tok/s`;
+    }
+    if (isStreaming) return 'Generating...';
+    return 'Online';
+  };
+  const statusText = getStatusText();
+
+  const statusColorClass = isError
+    ? 'error'
+    : !session
+      ? 'offline'
+      : isCancelling
+        ? 'cancelling'
+        : isStreaming
+          ? 'streaming'
+          : 'online';
 
   // Track which session ID we've loaded history for to avoid re-loading
   // when session metadata changes (like title updates)
@@ -75,9 +123,27 @@ export default function ChatContainer() {
         if (loaded) {
           loadedSessionRef.current = session.id;
         } else {
-          // Session expired on backend, create new one
-          loadedSessionRef.current = null;
-          clearSession();
+          // Session expired on backend (404) - remove it from local list and switch to another
+          const { sessions, removeSession } = useSessionStore.getState();
+          const expiredSessionId = session.id;
+
+          // Find remaining sessions after removing the expired one
+          const remainingSessions = sessions.filter(s => s.id !== expiredSessionId);
+
+          // Remove the expired session from local storage
+          removeSession(expiredSessionId);
+
+          if (remainingSessions.length > 0) {
+            // Switch to the most recent session
+            const nextSession = remainingSessions[0];
+            loadedSessionRef.current = nextSession.id;
+            setSession(nextSession);
+            await loadHistory(nextSession.id);
+          } else {
+            // No other sessions exist, create a new one
+            loadedSessionRef.current = null;
+            clearSession();
+          }
         }
         return;
       }
@@ -88,7 +154,7 @@ export default function ChatContainer() {
     };
 
     initSession();
-  }, [hasHydrated, session, createSession, loadHistory, clearSession]);
+  }, [hasHydrated, session, createSession, loadHistory, clearSession, setSession]);
 
   const handleDeleteConversation = useCallback(async () => {
     if (!session) return;
@@ -229,9 +295,29 @@ export default function ChatContainer() {
                 {statusText}
               </span>
             </div>
+            {isStreaming && streamProgress && (
+              <StreamProgressBar progress={streamProgress} isCancelling={isCancelling} />
+            )}
           </div>
-          
+
           <div className="header-right">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openSearch}
+              title="Search (Ctrl+K)"
+            >
+              <Search className="w-4 h-4 text-muted-foreground" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowExport(true)}
+              disabled={messages.length === 0}
+              title="Export Conversation"
+            >
+              <Download className="w-4 h-4 text-muted-foreground" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -266,8 +352,6 @@ export default function ChatContainer() {
             onRegenerate={regenerateResponse}
           />
           
-          {/* Gradient fade at bottom of list before input */}
-          <div className="chat-fade-overlay" />
         </main>
 
         <div className="input-area-wrapper">
@@ -275,6 +359,7 @@ export default function ChatContainer() {
             onSend={sendMessage} 
             isStreaming={isStreaming}
             onStop={stopGeneration}
+            hasMessages={messages.length > 0}
           />
         </div>
       </div>
@@ -325,10 +410,25 @@ export default function ChatContainer() {
                   <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Alt</kbd> + <kbd className="kbd">Shift</kbd> + <kbd className="kbd">D</kbd>
                 </div>
               </div>
+              <div className="shortcut-item">
+                <span className="shortcut-desc">Search</span>
+                <div className="shortcut-keys">
+                  <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">K</kbd>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <SearchPanel onResultClick={handleSearchResultClick} />
+
+      <ExportDialog
+        isOpen={showExport}
+        onClose={() => setShowExport(false)}
+        messages={messages}
+        sessionTitle={session?.metadata?.title as string | undefined}
+      />
     </div>
   );
 }

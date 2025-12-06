@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { Message, SearchResult } from '@/types/api';
 
+/**
+ * Streaming progress information for real-time updates.
+ */
+export interface StreamProgress {
+  tokensGenerated: number;
+  maxTokens: number;
+  tokensPerSecond: number;
+  etaSeconds: number;
+  percentage: number;
+}
+
 interface ChatState {
   messages: Message[];
   isStreaming: boolean;
@@ -10,6 +21,10 @@ interface ChatState {
   currentSearchQuery: string | undefined;
   error: string | null;
   editingMessageId: string | null;
+
+  // Progress tracking for bidirectional streaming
+  streamProgress: StreamProgress | null;
+  isCancelling: boolean;
 
   addMessage: (message: Message) => void;
   setMessages: (messages: Message[]) => void;
@@ -21,6 +36,8 @@ interface ChatState {
   setError: (error: string | null) => void;
   setEditingMessageId: (id: string | null) => void;
   removeMessagesFrom: (messageId: string) => void;
+  setStreamProgress: (progress: StreamProgress | null) => void;
+  setCancelling: (isCancelling: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -32,6 +49,8 @@ export const useChatStore = create<ChatState>((set) => ({
   currentSearchQuery: undefined,
   error: null,
   editingMessageId: null,
+  streamProgress: null,
+  isCancelling: false,
 
   addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
   setMessages: (messages) => set({ messages }),
@@ -39,7 +58,14 @@ export const useChatStore = create<ChatState>((set) => ({
   appendContent: (delta) => set((state) => ({ currentContent: state.currentContent + delta })),
   appendThought: (delta) => set((state) => ({ currentThought: state.currentThought + delta })),
   setSearchResults: (results, query) => set({ currentSearchResults: results, currentSearchQuery: query }),
-  resetCurrentStream: () => set({ currentContent: '', currentThought: '', currentSearchResults: undefined, currentSearchQuery: undefined }),
+  resetCurrentStream: () => set({
+    currentContent: '',
+    currentThought: '',
+    currentSearchResults: undefined,
+    currentSearchQuery: undefined,
+    streamProgress: null,
+    isCancelling: false,
+  }),
   setError: (error) => set({ error }),
   setEditingMessageId: (id) => set({ editingMessageId: id }),
   removeMessagesFrom: (messageId) =>
@@ -48,4 +74,6 @@ export const useChatStore = create<ChatState>((set) => ({
       if (index === -1) return state;
       return { messages: state.messages.slice(0, index) };
     }),
+  setStreamProgress: (progress) => set({ streamProgress: progress }),
+  setCancelling: (isCancelling) => set({ isCancelling }),
 }));

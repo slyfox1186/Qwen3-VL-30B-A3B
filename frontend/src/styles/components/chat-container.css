@@ -46,6 +46,27 @@
   @apply bg-destructive;
 }
 
+.status-dot.streaming {
+  @apply bg-primary;
+  animation: pulse-fast 0.8s ease-in-out infinite;
+}
+
+.status-dot.cancelling {
+  @apply bg-orange-500;
+  animation: none;
+}
+
+@keyframes pulse-fast {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
 .status-text {
   @apply text-xs font-mono text-muted-foreground;
 }

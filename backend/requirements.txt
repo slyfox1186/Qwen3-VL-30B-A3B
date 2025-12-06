@@ -7,6 +7,7 @@ uvicorn[standard]>=0.27.0
 # Data Validation
 pydantic>=2.6.0
 pydantic-settings>=2.1.0
+jsonschema>=4.21.0
 
 # Redis
 redis>=5.0.0
@@ -31,3 +32,16 @@ httpx>=0.26.0
 
 # SerpApi
 serpapi>=0.1.5
+
+# Observability
+structlog>=24.1.0
+prometheus-client>=0.20.0
+sentry-sdk[fastapi]>=1.40.0
+
+# Vector Search (optional - for semantic search)
+numpy>=1.26.0
+sentence-transformers>=2.3.0
+
+# Document Processing (optional - for multi-modal)
+pypdf>=4.0.0
+python-docx>=1.1.0

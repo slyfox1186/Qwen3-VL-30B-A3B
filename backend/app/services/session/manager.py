@@ -134,3 +134,47 @@ class SessionManager:
         if session:
             session.increment_messages(count)
             await self.update_session(session)
+
+    async def list_recent_sessions(self, limit: int = 50) -> list[Session]:
+        """
+        List recent sessions, sorted by updated_at descending.
+
+        Uses SCAN to find session keys and retrieves their data.
+
+        Args:
+            limit: Maximum number of sessions to return
+
+        Returns:
+            List of Session objects, most recently updated first
+        """
+        sessions: list[Session] = []
+        cursor = 0
+        pattern = RedisKeys.session("*")
+
+        while True:
+            cursor, keys = await self._redis.client.scan(
+                cursor=cursor,
+                match=pattern,
+                count=100,
+            )
+
+            for key in keys:
+                data = await self._redis.client.get(key)
+                if data:
+                    try:
+                        session = Session.from_json(data)
+                        sessions.append(session)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse session from key {key}: {e}")
+
+            if cursor == 0:
+                break
+
+            # Early exit if we have way more than needed
+            if len(sessions) > limit * 2:
+                break
+
+        # Sort by updated_at descending
+        sessions.sort(key=lambda s: s.updated_at_datetime, reverse=True)
+
+        return sessions[:limit]
