@@ -249,7 +249,8 @@ class QwenAgentClient:
             full_reasoning = ""
             last_content_len = 0  # Track what we've already sent
             last_reasoning_len = 0  # Track reasoning content sent
-            tool_calls_seen: set[str] = set()
+            # Accumulate function_calls by name - only emit AFTER streaming completes
+            accumulated_function_calls: dict[str, dict] = {}
             iteration_count = 0
 
             def process_responses(responses_list: list) -> None:
@@ -263,28 +264,14 @@ class QwenAgentClient:
                     if not isinstance(msg, dict):
                         continue
 
-                    # Handle function_call in message (Qwen-Agent format)
+                    # Accumulate function_call (DON'T emit during streaming)
+                    # Qwen-Agent sends accumulated args each iteration, so just keep latest
                     if "function_call" in msg and msg["function_call"]:
                         fc = msg["function_call"]
                         name = fc.get("name", "")
                         args = fc.get("arguments", "{}")
-
                         if name:
-                            sig = f"{name}:{args}"
-                            if sig not in tool_calls_seen:
-                                tool_calls_seen.add(sig)
-                                queue.put_nowait((
-                                    "chunk",
-                                    {
-                                        "type": "tool_call",
-                                        "tool_call": {
-                                            "id": f"call_{name}_{len(tool_calls_seen)}",
-                                            "index": len(tool_calls_seen) - 1,
-                                            "function": {"name": name, "arguments": args},
-                                        },
-                                    },
-                                ))
-                                logger.info(f"Received function_call: {name}")
+                            accumulated_function_calls[name] = args
 
                     # Handle reasoning_content (thinking) - Qwen-Agent returns this separately
                     # CRITICAL: Qwen-Agent streaming sends accumulated content, not deltas
@@ -380,8 +367,24 @@ class QwenAgentClient:
                     queue.put_nowait(("error", e))
                     return
 
-            # Parse tool calls from accumulated content (fallback parsing)
+            # Emit accumulated function_calls AFTER streaming completes (one chunk each)
+            for idx, (name, args) in enumerate(accumulated_function_calls.items()):
+                queue.put_nowait((
+                    "chunk",
+                    {
+                        "type": "tool_call",
+                        "tool_call": {
+                            "id": f"call_{name}_{idx}",
+                            "index": idx,
+                            "function": {"name": name, "arguments": args},
+                        },
+                    },
+                ))
+                logger.info(f"Emitting function_call: {name}")
+
+            # Fallback: parse tool calls from content (for XML/✿FUNCTION✿ formats)
             if full_content:
+                tool_calls_seen = {f"{n}:{a}" for n, a in accumulated_function_calls.items()}
                 parsed_tools = parse_tool_calls(full_content, tool_calls_seen)
                 for tool_call in parsed_tools:
                     queue.put_nowait(("chunk", tool_call))
