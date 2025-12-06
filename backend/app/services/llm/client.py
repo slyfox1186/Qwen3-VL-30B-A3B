@@ -78,6 +78,7 @@ class VLLMClient:
         }
         if tools:
             payload["tools"] = tools
+            payload["parallel_tool_calls"] = True  # Enable multiple tool calls in one response
         if tool_choice:
             payload["tool_choice"] = tool_choice
 
