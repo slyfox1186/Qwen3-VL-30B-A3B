@@ -167,6 +167,15 @@ class MemoryService:
             logger.warning("Failed to generate embedding for memory, saving without vector")
 
         try:
+            logger.info(
+                f"=== MEMORY SAVE START ===\n"
+                f"  Key: {memory_key}\n"
+                f"  Content: {content[:200]}{'...' if len(content) > 200 else ''}\n"
+                f"  Importance: {importance}\n"
+                f"  Source: {source}\n"
+                f"  Has Embedding: {embedding is not None}"
+            )
+
             async with pg.pool.acquire() as conn:
                 if memory_key:
                     # Upsert for key-value facts
@@ -191,6 +200,7 @@ class MemoryService:
                         importance,
                         source,
                     )
+                    logger.info(f"=== MEMORY UPSERT COMPLETE === id={result}, key={memory_key}")
                 else:
                     # Insert for semantic-only memories
                     result = await conn.fetchval(
@@ -205,8 +215,7 @@ class MemoryService:
                         importance,
                         source,
                     )
-
-                logger.info(f"Saved memory: key={memory_key}, id={result}")
+                    logger.info(f"=== MEMORY INSERT COMPLETE === id={result} (semantic only)")
                 return result
 
         except Exception as e:
@@ -227,9 +236,18 @@ class MemoryService:
         """
         pg = await self._get_postgres()
 
+        logger.info(
+            f"=== MEMORY SEARCH START ===\n"
+            f"  Query: {query}\n"
+            f"  User: {user_id}\n"
+            f"  Top K: {top_k or self._settings.memory_search_top_k}\n"
+            f"  Min Score: {min_score or self._settings.memory_search_min_score}"
+        )
+
         # Use asymmetric query encoding
         query_embedding = self._embed_query(query)
         if query_embedding is None:
+            logger.warning("=== MEMORY SEARCH FAILED === No embedding generated")
             return []
 
         top_k = top_k or self._settings.memory_search_top_k
@@ -261,7 +279,7 @@ class MemoryService:
                     top_k,
                 )
 
-                return [
+                results = [
                     MemorySearchResult(
                         id=row["id"],
                         content=row["content"],
@@ -272,6 +290,19 @@ class MemoryService:
                     )
                     for row in rows
                 ]
+
+                # Log search results
+                logger.info(
+                    f"=== MEMORY SEARCH COMPLETE ===\n"
+                    f"  Found: {len(results)} memories\n"
+                    + "\n".join(
+                        f"  [{i+1}] score={r.score:.3f} key={r.memory_key} content={r.content[:80]}..."
+                        for i, r in enumerate(results)
+                    )
+                    if results else "  No matching memories found"
+                )
+
+                return results
 
         except Exception as e:
             logger.error(f"Memory search failed: {e}")

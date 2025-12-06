@@ -410,7 +410,7 @@ async def generate_session_title(
             max_tokens=30,
             temperature=0.3,
         )
-        raw_title = response.get("content", "").strip()
+        raw_title = (response.get("content") or "").strip()
         title = _clean_title(raw_title) if raw_title else None
         generated = bool(title)
     except Exception as e:

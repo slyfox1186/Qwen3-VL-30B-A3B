@@ -10,8 +10,8 @@ import AIMessage from './AIMessage';
 import QwenLogo from './QwenLogo';
 
 // Threshold in pixels - if user scrolls more than this distance from bottom, auto-scroll stops
-// Using 150px to give users a clear escape from autoscroll
-const SCROLL_THRESHOLD = 150;
+// Using 50px to allow easier escape from autoscroll while avoiding accidental triggers
+const SCROLL_THRESHOLD = 50;
 
 interface MessageListProps {
   messages: Message[];
@@ -79,7 +79,7 @@ export default function MessageList({
       const now = Date.now();
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const scrolledUp = scrollTop < lastScrollTop - 5; // 5px tolerance for noise
+      const scrolledUp = scrollTop < lastScrollTop - 1; // 1px tolerance for tiny fluctuations
 
       lastScrollTop = scrollTop;
 

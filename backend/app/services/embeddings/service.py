@@ -29,7 +29,8 @@ def _load_model(model_name: str) -> Any:
         from sentence_transformers import SentenceTransformer
 
         logger.info(f"Loading embedding model: {model_name}")
-        _model = SentenceTransformer(model_name)
+        # Force CPU to avoid OOM on GPU (since LLM takes all VRAM)
+        _model = SentenceTransformer(model_name, device="cpu")
         _model_name = model_name
         logger.info(f"Embedding model loaded: {model_name}")
         return _model

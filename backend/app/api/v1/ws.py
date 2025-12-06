@@ -370,7 +370,11 @@ class WebSocketChatHandler:
                                 f"[{request_id}] Failed to parse tool args: {func_args_str}"
                             )
 
-                        logger.info(f"[{request_id}] Executing tool: {func_name}({func_args})")
+                        # Log full tool call details
+                        logger.info(
+                            f"[{request_id}] === TOOL CALL: {func_name} ===\n"
+                            f"  Arguments: {json.dumps(func_args, indent=2, default=str)}"
+                        )
 
                         # Execute the function
                         result = await self.function_executor.execute(func_name, func_args)
@@ -388,9 +392,12 @@ class WebSocketChatHandler:
                             "content": result_content,
                         })
 
+                        # Log full result details
                         logger.info(
-                            f"[{request_id}] Tool {func_name} result: "
-                            f"success={result.success}, time={result.execution_time_ms:.1f}ms"
+                            f"[{request_id}] === TOOL RESULT: {func_name} ===\n"
+                            f"  Success: {result.success}\n"
+                            f"  Time: {result.execution_time_ms:.1f}ms\n"
+                            f"  Result: {result_content[:500]}{'...' if len(result_content) > 500 else ''}"
                         )
 
                     # Continue loop to get model's response to tool results
